@@ -5,10 +5,18 @@
 #include <unordered_map>
 #include <vector>
 
+#include "protocan/descriptor_parser.hpp"
 #include "protocan/types.hpp"
 
 namespace protocan
 {
+
+/// PDO 自動生成用のノード入力情報
+struct NodeConfig
+{
+  uint8_t local_node_id;
+  const ParsedDescriptor * descriptor;
+};
 
 /// PDO マッピングエントリ (1 つの Standard CAN ID に対する割当情報)
 struct PdoMapping
@@ -53,6 +61,16 @@ public:
 
   /// 全マッピングを取得する
   const std::unordered_map<uint16_t, PdoMapping> & mappings() const { return mappings_; }
+
+  /// 複数のノード構成から最適な PDO マッピングのリストを自動生成する
+  /// (同一方向、周期、優先度のトピックを集約して 64 バイト以内にパッキング)
+  /// 生成された PDO は自動的に allocate されるが、set_mapping はされないため、
+  /// 呼び出し側で send_pdo_cfg の後に set_mapping を行う必要がある。
+  /// @param device_id      対象デバイス ID
+  /// @param node_configs   ノードIDとディスクリプタのペアのリスト
+  /// @return               生成された PdoMapping のリスト
+  std::vector<PdoMapping> generate_optimal_mappings(
+    uint8_t device_id, const std::vector<NodeConfig> & node_configs);
 
   /// 全てリセットする
   void reset();

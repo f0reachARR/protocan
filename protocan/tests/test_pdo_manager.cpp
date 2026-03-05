@@ -97,3 +97,79 @@ TEST(PdoManager, Reset)
 
   EXPECT_TRUE(mgr.mappings().empty());
 }
+
+TEST(PdoManager, GenerateOptimalMappings)
+{
+  PdoManager mgr;
+  uint8_t device_id = 5;
+
+  ParsedDescriptor desc;
+  desc.schema_hash = 0x1234;
+
+  // Topic 0: TX, periodic=true(100ms), priority=2 (High), 2 fields (4B, 4B)
+  ParsedTopic t0;
+  t0.index = 0;
+  t0.is_tx = true;
+  t0.periodic = true;
+  t0.priority = 2;
+  t0.message.fields.push_back({"f1", 5, 0, 4, ""});
+  t0.message.fields.push_back({"f2", 5, 4, 4, ""});
+  desc.topics.push_back(t0);
+
+  // Topic 1: TX, periodic=true(100ms), priority=2 (High), 1 field (8B)
+  ParsedTopic t1;
+  t1.index = 1;
+  t1.is_tx = true;
+  t1.periodic = true;
+  t1.priority = 2;
+  t1.message.fields.push_back({"f3", 9, 0, 8, ""});
+  desc.topics.push_back(t1);
+
+  // Topic 2: RX, periodic=false(0ms), priority=5 (Low), 1 field (2B)
+  ParsedTopic t2;
+  t2.index = 2;
+  t2.is_tx = false;
+  t2.periodic = false;
+  t2.priority = 5;
+  t2.message.fields.push_back({"f4", 3, 0, 2, ""});
+  desc.topics.push_back(t2);
+
+  std::vector<NodeConfig> configs;
+  configs.push_back({10, &desc});  // local_node_id = 10
+
+  auto mappings = mgr.generate_optimal_mappings(device_id, configs);
+
+  // We expect 2 mappings: one for TX (High, 100ms) and one for RX (Low, 0ms)
+  ASSERT_EQ(mappings.size(), 2u);
+
+  // 最初のマッピングは TX グループのパッキング
+  // Topic 0と1が同じグループに入り、4B+4B+8B = 16B になるはず
+  const auto & m_tx = mappings[0];
+  EXPECT_EQ(m_tx.direction, PdoCfgDirection::TX);
+  EXPECT_EQ(m_tx.period_ms, 100);
+  EXPECT_EQ(m_tx.total_size, 16);
+  ASSERT_EQ(m_tx.entries.size(), 3u);
+
+  EXPECT_EQ(m_tx.entries[0].topic_index, 0);
+  EXPECT_EQ(m_tx.entries[0].size, 4);
+  EXPECT_EQ(m_tx.entries[0].offset, 0);
+
+  EXPECT_EQ(m_tx.entries[1].topic_index, 0);
+  EXPECT_EQ(m_tx.entries[1].size, 4);
+  EXPECT_EQ(m_tx.entries[1].offset, 4);
+
+  EXPECT_EQ(m_tx.entries[2].topic_index, 1);
+  EXPECT_EQ(m_tx.entries[2].size, 8);
+  EXPECT_EQ(m_tx.entries[2].offset, 8);
+
+  // 2番目のマッピングは RX グループのパッキング
+  const auto & m_rx = mappings[1];
+  EXPECT_EQ(m_rx.direction, PdoCfgDirection::RX);
+  EXPECT_EQ(m_rx.period_ms, 0);
+  EXPECT_EQ(m_rx.total_size, 2);
+  ASSERT_EQ(m_rx.entries.size(), 1u);
+
+  EXPECT_EQ(m_rx.entries[0].topic_index, 2);
+  EXPECT_EQ(m_rx.entries[0].size, 2);
+  EXPECT_EQ(m_rx.entries[0].offset, 0);
+}
