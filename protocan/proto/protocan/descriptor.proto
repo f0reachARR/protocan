@@ -1,0 +1,82 @@
+// protocan/descriptor.proto
+//
+// ProtoCAN Descriptor Blob のデータ構造定義。
+// protoc-gen-protocan が .proto スキーマから Node Type ごとに生成し、
+// デバイス ROM に定数として配置される。マスター（ブリッジ）は DISC 要求で
+// 取得し、ROS 2 トピック・サービス・パラメータを動的に構築する。
+
+syntax = "proto3";
+package protocan;
+
+option optimize_for = LITE_RUNTIME;
+
+// ── CAN バイナリのフィールド型 (spec.md §2.4 型テーブル) ──
+enum FieldType {
+  FIELD_TYPE_BOOL   = 0;   // uint8 (0/1), 1B
+  FIELD_TYPE_UINT8  = 1;   // LE u8,  1B
+  FIELD_TYPE_INT8   = 2;   // LE i8,  1B
+  FIELD_TYPE_UINT16 = 3;   // LE u16, 2B
+  FIELD_TYPE_INT16  = 4;   // LE i16, 2B
+  FIELD_TYPE_UINT32 = 5;   // LE u32, 4B
+  FIELD_TYPE_INT32  = 6;   // LE i32, 4B
+  FIELD_TYPE_FLOAT  = 7;   // IEEE 754 LE, 4B
+  FIELD_TYPE_DOUBLE = 8;   // IEEE 754 LE, 8B
+  FIELD_TYPE_UINT64 = 9;   // LE u64, 8B
+  FIELD_TYPE_INT64  = 10;  // LE i64, 8B
+}
+
+// ── フィールド単位の記述子 ──
+message FieldDescriptor {
+  string    name       = 1;  // proto フィールド名 (例: "current_a")
+  FieldType type       = 2;  // CAN バイナリ型
+  uint32    offset     = 3;  // Packed Binary 内のバイトオフセット
+  uint32    size       = 4;  // バイトサイズ
+  string    ros2_field = 5;  // ROS 2 フィールドパス (例: "linear.x"、未指定時は空)
+}
+
+// ── メッセージ構造の記述子 (Topic / Service の Req/Res で共用) ──
+message MessageDescriptor {
+  string ros2_msg_type            = 1;  // ROS 2 メッセージ型 (省略時は動的生成)
+  uint32 payload_size             = 2;  // Packed Binary 全体のバイトサイズ
+  repeated FieldDescriptor fields = 3;  // フィールド定義 (proto フィールド番号順)
+}
+
+// ── Topic 記述子 ──
+message TopicDescriptor {
+  uint32            index    = 1;  // ノード内での Topic インデックス
+  string            name     = 2;  // RPC名 or ros2_name
+  bool              is_tx    = 3;  // true=TX (デバイス→マスター), false=RX
+  bool              periodic = 4;  // 周期送信か
+  uint32            priority = 5;  // CAN アービトレーション優先度 (0-7)
+  MessageDescriptor message  = 6;  // ペイロード構造
+}
+
+// ── Service 記述子 ──
+message ServiceDescriptor {
+  uint32            index        = 1;  // ノード内での Service インデックス
+  string            name         = 2;  // RPC名 or ros2_name
+  string            ros2_srv_type = 3; // ROS 2 サービス型 (省略時は空)
+  MessageDescriptor request      = 4;  // Request ペイロード構造
+  MessageDescriptor response     = 5;  // Response ペイロード構造
+}
+
+// ── Parameter 記述子 ──
+message ParamDescriptor {
+  uint32    index     = 1;  // ノード内での Parameter インデックス
+  string    name      = 2;  // パラメータ名
+  FieldType type      = 3;  // パラメータの型
+  bool      read_only = 4;  // 読み取り専用か
+}
+
+// ── Node Type 単位のルート記述子 ──
+// protoc-gen-protocan が service 定義から 1 つ生成する。
+// schema_hash は本メッセージの deterministic serialize 結果
+// (schema_hash フィールドを 0 とした状態) の FNV-1a (32-bit) 値。
+message NodeDescriptor {
+  uint32 schema_hash                  = 1;
+  string node_type_name               = 2;  // 例: "bldc_motor.BLDCMotor"
+  string ros2_namespace               = 3;  // 省略時は空
+  repeated TopicDescriptor   topics   = 4;
+  repeated ServiceDescriptor services = 5;
+  repeated ParamDescriptor   params   = 6;
+}
