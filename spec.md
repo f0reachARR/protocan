@@ -96,9 +96,10 @@ extend google.protobuf.MethodOptions {
   MethodOptions method = 50001;
 }
 
-// ──── Field レベル = ROS 2 フィールドパス ────
+// ──── Field レベル = ROS 2 フィールドパス・型縮小 ────
 message FieldOptions {
   string ros2_field = 1;  // ROS 2 メッセージ内の対応フィールドパス (例: "linear.x")
+  uint32 size       = 2;  // CANペイロード上でのバイトサイズ (1 または 2 を指定して 8/16-bit に縮小。省略時は元の型のサイズ)
 }
 extend google.protobuf.FieldOptions {
   FieldOptions field = 50003;
@@ -147,7 +148,8 @@ message MotorStatus {
   float  current_a     = 1;
   float  velocity_rps  = 2;
   float  temperature_c = 3;
-  uint32 error_flags   = 4;
+  // ワイヤ上は uint32 だが、protocan.field.size=1 により CAN 上は uint8 に縮小される
+  uint32 error_flags   = 4 [(protocan.field) = { size: 1 }]; 
 }
 
 // 既存の ROS 2 型にマッピングする例
