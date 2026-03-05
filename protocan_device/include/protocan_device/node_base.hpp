@@ -53,6 +53,13 @@ public:
   void clear_pdo(uint16_t pdo_id);   // COMMIT action=DELETE 時
   void reset_pdos();                  // RESET_NODE 時
 
+  // ------- イベント駆動 PDO 送信用コールバック登録 -------
+
+  using SendPdoFn = protocan::Status (*)(uint16_t pdo_id, const uint8_t * data, uint8_t len, void *);
+
+  /// Device::add_node() が呼び出す。生成コードが override して send_pdo_fn_ を保存する。
+  virtual void set_send_pdo(SendPdoFn /*fn*/, void * /*ctx*/) {}
+
   // ------- 生成コードがオーバーライドする純仮想メソッド -------
 
   /// PDO受信 (RX Topic)

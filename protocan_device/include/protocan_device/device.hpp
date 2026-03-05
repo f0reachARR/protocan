@@ -108,6 +108,9 @@ private:
 
   PdoCfgStatus commit_pdo_cfg();
 
+  static Status send_pdo_trampoline(
+    uint16_t pdo_id, const uint8_t * data, uint8_t len, void * ctx);
+
   NodeBase * find_node(uint8_t local_node_id);
   Status send_frame(const CanFrame & f);
 };

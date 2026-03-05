@@ -1,0 +1,33 @@
+syntax = "proto3";
+package protocan;
+
+import "google/protobuf/descriptor.proto";
+
+message NodeOptions {
+  string ros2_namespace = 1;
+}
+
+// Trailing _ to avoid collision with google::protobuf::MethodOptions C++ type name
+message MethodOptions_ {
+  bool   periodic      = 1;
+  uint32 priority      = 2;
+  bool   is_parameter  = 3;
+  bool   read_only     = 4;
+  string ros2_name     = 5;
+  string ros2_srv_type = 6;
+}
+
+// Trailing _ to avoid collision with google::protobuf::FieldOptions C++ type name
+message FieldOptions_ {
+  string ros2_field = 1;
+  uint32 size       = 2;
+}
+
+message MsgOptions {
+  string ros2_msg_type = 1;
+}
+
+extend google.protobuf.ServiceOptions { NodeOptions    node   = 50000; }
+extend google.protobuf.MethodOptions  { MethodOptions_ method = 50001; }
+extend google.protobuf.FieldOptions   { FieldOptions_  field  = 50002; }
+extend google.protobuf.MessageOptions { MsgOptions     msg    = 50003; }

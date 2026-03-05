@@ -54,6 +54,7 @@ Status Device::add_node(NodeBase & node)
     return Status::NO_RESOURCE;
   }
   nodes_[node_count_++] = &node;
+  node.set_send_pdo(&Device::send_pdo_trampoline, this);
   return Status::OK;
 }
 
@@ -667,5 +668,13 @@ NodeBase * Device::find_node(uint8_t local_node_id)
 }
 
 Status Device::send_frame(const CanFrame & f) { return can_->send(f); }
+
+Status Device::send_pdo_trampoline(
+  uint16_t pdo_id, const uint8_t * data, uint8_t len, void * ctx)
+{
+  auto *   self  = static_cast<Device *>(ctx);
+  CanFrame frame = make_standard_frame(pdo_id, data, len);
+  return self->send_frame(frame);
+}
 
 }  // namespace protocan::device
