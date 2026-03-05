@@ -14,6 +14,11 @@ void DeviceTracker::update_heartbeat(uint8_t device_id, const Heartbeat & heartb
   // PREOP 状態ではノード情報が含まれる。
   // OP 状態では num_nodes=0 で省略されるため、既存情報を保持する。
   if (heartbeat.num_nodes > 0) {
+    // 旧ノード情報の逆引きインデックスを削除
+    for (const auto & old_node : info.nodes) {
+      node_to_schema_.erase({device_id, old_node.local_node_id});
+    }
+
     info.nodes.clear();
     info.nodes.reserve(heartbeat.nodes.size());
     for (const auto & entry : heartbeat.nodes) {
@@ -21,6 +26,9 @@ void DeviceTracker::update_heartbeat(uint8_t device_id, const Heartbeat & heartb
       ni.local_node_id = entry.local_node_id;
       ni.schema_hash = entry.schema_hash;
       info.nodes.push_back(ni);
+
+      // 逆引きインデックスを更新
+      node_to_schema_[{device_id, entry.local_node_id}] = entry.schema_hash;
     }
   }
 }
@@ -51,6 +59,37 @@ std::optional<ParsedDescriptor> DeviceTracker::get_cached_descriptor(uint32_t sc
     return std::nullopt;
   }
   return it->second;
+}
+
+const ParsedDescriptor * DeviceTracker::get_descriptor_ptr(uint32_t schema_hash) const
+{
+  auto it = schema_cache_.find(schema_hash);
+  if (it == schema_cache_.end()) return nullptr;
+  return &it->second;
+}
+
+const ParsedDescriptor * DeviceTracker::get_node_descriptor(
+  uint8_t device_id, uint8_t local_node_id) const
+{
+  auto it = node_to_schema_.find({device_id, local_node_id});
+  if (it == node_to_schema_.end()) return nullptr;
+  return get_descriptor_ptr(it->second);
+}
+
+const ParsedTopic * DeviceTracker::get_topic(
+  uint8_t device_id, uint8_t local_node_id, uint8_t topic_index) const
+{
+  const auto * desc = get_node_descriptor(device_id, local_node_id);
+  if (!desc || topic_index >= desc->topics.size()) return nullptr;
+  return &desc->topics[topic_index];
+}
+
+const ParsedField * DeviceTracker::get_field(
+  uint8_t device_id, uint8_t local_node_id, uint8_t topic_index, uint8_t field_index) const
+{
+  const auto * topic = get_topic(device_id, local_node_id, topic_index);
+  if (!topic || field_index >= topic->message.fields.size()) return nullptr;
+  return &topic->message.fields[field_index];
 }
 
 void DeviceTracker::invalidate_cache(uint32_t schema_hash) { schema_cache_.erase(schema_hash); }
@@ -94,6 +133,7 @@ void DeviceTracker::clear()
 {
   devices_.clear();
   schema_cache_.clear();
+  node_to_schema_.clear();
 }
 
 }  // namespace protocan

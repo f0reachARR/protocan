@@ -12,11 +12,38 @@
 #include "protocan/can_interface.hpp"
 #include "protocan/descriptor_parser.hpp"
 #include "protocan/device_tracker.hpp"
+#include "protocan/packed_binary.hpp"
 #include "protocan/pdo_manager.hpp"
 #include "protocan/types.hpp"
 
 namespace protocan
 {
+
+// ════════════════════════════════════════════════════════════════
+// PDO デコード結果
+// ════════════════════════════════════════════════════════════════
+
+/// PDO フレームからデコードされた個々のフィールド値
+struct PdoDecodedField
+{
+  uint8_t device_id;       ///< デバイス ID
+  uint8_t local_node_id;   ///< ノード ID
+  uint8_t topic_index;     ///< ディスクリプタ内のトピックインデックス
+  std::string topic_name;  ///< トピック名 (ディスクリプタから取得)
+  uint8_t field_index;     ///< メッセージ内のフィールドインデックス
+  std::string field_name;  ///< フィールド名 (ディスクリプタから取得)
+  FieldValue value;        ///< デコードされた値 (std::variant)
+};
+
+/// PDO フレーム全体のデコード結果
+struct PdoDecodedData
+{
+  uint16_t pdo_id;                      ///< Standard CAN ID
+  PdoCfgDirection direction;            ///< TX or RX
+  std::vector<PdoDecodedField> fields;  ///< デコードされた全フィールド
+  const uint8_t * raw_data;             ///< 生データへのポインタ
+  uint8_t raw_len;                      ///< 生データ長 (参考用)
+};
 
 // ════════════════════════════════════════════════════════════════
 // マスター側コールバック (上位レイヤーへの通知)
@@ -35,8 +62,13 @@ struct MasterCallbacks
   std::function<void(uint8_t device_id, uint8_t local_node_id, const ParsedDescriptor & desc)>
     on_descriptor_received;
 
-  /// PDO データを受信した (Standard ID)
+  /// PDO データを受信した (生データ, Standard ID)
   std::function<void(uint16_t pdo_id, const uint8_t * data, uint8_t len)> on_pdo_received;
+
+  /// PDO データをディスクリプタに基づいてデコードした結果を受信した
+  /// マッピングが登録済みかつディスクリプタがキャッシュ済みの場合のみ発火する。
+  /// on_pdo_received より後に呼ばれる。
+  std::function<void(const PdoDecodedData & decoded)> on_pdo_data;
 
   /// EMCY メッセージを受信した
   std::function<void(uint8_t device_id, uint8_t node_id, const EmcyMessage & emcy)>

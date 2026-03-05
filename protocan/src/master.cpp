@@ -123,9 +123,59 @@ void Master::process_management_frame(const CanFrame & frame)
 
 void Master::process_pdo_frame(const CanFrame & frame)
 {
+  uint16_t pdo_id = static_cast<uint16_t>(frame.id & 0x7FF);
+  const uint8_t * data = frame.data.data();
+  uint8_t len = frame.dlc;
+
+  // 1. 生データコールバック (常に発火)
   if (callbacks_.on_pdo_received) {
-    callbacks_.on_pdo_received(
-      static_cast<uint16_t>(frame.id & 0x7FF), frame.data.data(), frame.dlc);
+    callbacks_.on_pdo_received(pdo_id, data, len);
+  }
+
+  // 2. ディスクリプタベースのデコード (マッピングが登録済みの場合のみ)
+  if (!callbacks_.on_pdo_data) return;
+
+  auto mapping_opt = pdo_mgr_.get_mapping(pdo_id);
+  if (!mapping_opt) return;
+
+  const auto & mapping = *mapping_opt;
+
+  PdoDecodedData decoded;
+  decoded.pdo_id = pdo_id;
+  decoded.direction = mapping.direction;
+  decoded.raw_data = data;
+  decoded.raw_len = len;
+
+  for (const auto & entry : mapping.entries) {
+    // エントリの offset + size がフレーム長を超えていたらスキップ
+    if (entry.offset + entry.size > len) continue;
+
+    // DeviceTracker の O(1) インデックスで直接フィールド情報を取得
+    const auto * topic =
+      tracker_.get_topic(entry.device_id, entry.local_node_id, entry.topic_index);
+    if (!topic) continue;
+
+    const auto * field = tracker_.get_field(
+      entry.device_id, entry.local_node_id, entry.topic_index, entry.field_index);
+    if (!field) continue;
+
+    // Packed Binary デコード
+    FieldValue value = decode_field(data, entry.offset, field->type, entry.size);
+
+    PdoDecodedField df;
+    df.device_id = entry.device_id;
+    df.local_node_id = entry.local_node_id;
+    df.topic_index = entry.topic_index;
+    df.topic_name = topic->name;
+    df.field_index = entry.field_index;
+    df.field_name = field->name;
+    df.value = value;
+
+    decoded.fields.push_back(std::move(df));
+  }
+
+  if (!decoded.fields.empty()) {
+    callbacks_.on_pdo_data(decoded);
   }
 }
 

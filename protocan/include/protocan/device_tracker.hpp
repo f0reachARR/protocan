@@ -51,8 +51,25 @@ public:
   /// ディスクリプタをキャッシュする
   void cache_descriptor(uint32_t schema_hash, ParsedDescriptor descriptor);
 
-  /// キャッシュ済みディスクリプタを取得する
+  /// キャッシュ済みディスクリプタを取得する (コピー)
   std::optional<ParsedDescriptor> get_cached_descriptor(uint32_t schema_hash) const;
+
+  /// キャッシュ済みディスクリプタへのポインタを取得する (ゼロコピー)
+  /// ホットパスでの利用向け。キャッシュが無効化されるとダングリングポインタになるため、
+  /// 返却後にキャッシュ操作を行わないこと。
+  const ParsedDescriptor * get_descriptor_ptr(uint32_t schema_hash) const;
+
+  /// (device_id, local_node_id) からディスクリプタへのポインタを直接取得する
+  /// 内部の逆引きインデックスを使用して O(1) で解決する。
+  const ParsedDescriptor * get_node_descriptor(uint8_t device_id, uint8_t local_node_id) const;
+
+  /// (device_id, local_node_id, topic_index) からトピックへのポインタを取得する
+  const ParsedTopic * get_topic(
+    uint8_t device_id, uint8_t local_node_id, uint8_t topic_index) const;
+
+  /// (device_id, local_node_id, topic_index, field_index) からフィールドへのポインタを取得する
+  const ParsedField * get_field(
+    uint8_t device_id, uint8_t local_node_id, uint8_t topic_index, uint8_t field_index) const;
 
   /// Schema Hash キャッシュを無効化する (衝突時)
   void invalidate_cache(uint32_t schema_hash);
@@ -74,6 +91,25 @@ private:
 
   /// schema_hash → ParsedDescriptor のキャッシュ
   std::unordered_map<uint32_t, ParsedDescriptor> schema_cache_;
+
+  /// (device_id, local_node_id) → schema_hash の逆引きインデックス
+  struct NodeKey
+  {
+    uint8_t device_id;
+    uint8_t local_node_id;
+    bool operator==(const NodeKey & o) const
+    {
+      return device_id == o.device_id && local_node_id == o.local_node_id;
+    }
+  };
+  struct NodeKeyHash
+  {
+    size_t operator()(const NodeKey & k) const
+    {
+      return (static_cast<size_t>(k.device_id) << 8) | k.local_node_id;
+    }
+  };
+  std::unordered_map<NodeKey, uint32_t, NodeKeyHash> node_to_schema_;
 };
 
 }  // namespace protocan
