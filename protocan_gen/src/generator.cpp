@@ -633,6 +633,165 @@ static std::string gen_decode_field(const FieldInfo & f, const std::string & msg
   return os.str();
 }
 
+// eoffset variants: use e.offset as the runtime base instead of compile-time f.offset
+
+static std::string gen_encode_field_to_eoffset(const FieldInfo & f, const std::string & src)
+{
+  std::ostringstream os;
+  const std::string & n = src;
+
+  switch (f.field_type_enum) {
+    case protocan::FIELD_TYPE_BOOL:
+    case protocan::FIELD_TYPE_UINT8:
+      os << "  buf[e.offset + 0] = static_cast<uint8_t>(" << n << ");\n";
+      break;
+    case protocan::FIELD_TYPE_INT8:
+      os << "  buf[e.offset + 0] = static_cast<uint8_t>(" << n << ");\n";
+      break;
+    case protocan::FIELD_TYPE_UINT16:
+      os << "  buf[e.offset + 0] = static_cast<uint8_t>(" << n << ");\n";
+      os << "  buf[e.offset + 1] = static_cast<uint8_t>((" << n << ") >> 8);\n";
+      break;
+    case protocan::FIELD_TYPE_INT16:
+      os << "  { uint16_t _v = static_cast<uint16_t>(" << n << ");\n";
+      os << "    buf[e.offset + 0] = static_cast<uint8_t>(_v);\n";
+      os << "    buf[e.offset + 1] = static_cast<uint8_t>(_v >> 8); }\n";
+      break;
+    case protocan::FIELD_TYPE_UINT32:
+      os << "  buf[e.offset + 0] = static_cast<uint8_t>(" << n << ");\n";
+      os << "  buf[e.offset + 1] = static_cast<uint8_t>((" << n << ") >> 8);\n";
+      os << "  buf[e.offset + 2] = static_cast<uint8_t>((" << n << ") >> 16);\n";
+      os << "  buf[e.offset + 3] = static_cast<uint8_t>((" << n << ") >> 24);\n";
+      break;
+    case protocan::FIELD_TYPE_INT32:
+      os << "  { uint32_t _v = static_cast<uint32_t>(" << n << ");\n";
+      os << "    buf[e.offset + 0] = static_cast<uint8_t>(_v);\n";
+      os << "    buf[e.offset + 1] = static_cast<uint8_t>(_v >> 8);\n";
+      os << "    buf[e.offset + 2] = static_cast<uint8_t>(_v >> 16);\n";
+      os << "    buf[e.offset + 3] = static_cast<uint8_t>(_v >> 24); }\n";
+      break;
+    case protocan::FIELD_TYPE_FLOAT:
+      os << "  { uint32_t _v; std::memcpy(&_v, &" << n << ", 4);\n";
+      os << "    buf[e.offset + 0] = static_cast<uint8_t>(_v);\n";
+      os << "    buf[e.offset + 1] = static_cast<uint8_t>(_v >> 8);\n";
+      os << "    buf[e.offset + 2] = static_cast<uint8_t>(_v >> 16);\n";
+      os << "    buf[e.offset + 3] = static_cast<uint8_t>(_v >> 24); }\n";
+      break;
+    case protocan::FIELD_TYPE_DOUBLE:
+      os << "  { uint64_t _v; std::memcpy(&_v, &" << n << ", 8);\n";
+      os << "    buf[e.offset + 0] = static_cast<uint8_t>(_v);\n";
+      os << "    buf[e.offset + 1] = static_cast<uint8_t>(_v >> 8);\n";
+      os << "    buf[e.offset + 2] = static_cast<uint8_t>(_v >> 16);\n";
+      os << "    buf[e.offset + 3] = static_cast<uint8_t>(_v >> 24);\n";
+      os << "    buf[e.offset + 4] = static_cast<uint8_t>(_v >> 32);\n";
+      os << "    buf[e.offset + 5] = static_cast<uint8_t>(_v >> 40);\n";
+      os << "    buf[e.offset + 6] = static_cast<uint8_t>(_v >> 48);\n";
+      os << "    buf[e.offset + 7] = static_cast<uint8_t>(_v >> 56); }\n";
+      break;
+    case protocan::FIELD_TYPE_UINT64:
+      os << "  buf[e.offset + 0] = static_cast<uint8_t>(" << n << ");\n";
+      os << "  buf[e.offset + 1] = static_cast<uint8_t>((" << n << ") >> 8);\n";
+      os << "  buf[e.offset + 2] = static_cast<uint8_t>((" << n << ") >> 16);\n";
+      os << "  buf[e.offset + 3] = static_cast<uint8_t>((" << n << ") >> 24);\n";
+      os << "  buf[e.offset + 4] = static_cast<uint8_t>((" << n << ") >> 32);\n";
+      os << "  buf[e.offset + 5] = static_cast<uint8_t>((" << n << ") >> 40);\n";
+      os << "  buf[e.offset + 6] = static_cast<uint8_t>((" << n << ") >> 48);\n";
+      os << "  buf[e.offset + 7] = static_cast<uint8_t>((" << n << ") >> 56);\n";
+      break;
+    case protocan::FIELD_TYPE_INT64:
+      os << "  { uint64_t _v = static_cast<uint64_t>(" << n << ");\n";
+      os << "    buf[e.offset + 0] = static_cast<uint8_t>(_v);\n";
+      os << "    buf[e.offset + 1] = static_cast<uint8_t>(_v >> 8);\n";
+      os << "    buf[e.offset + 2] = static_cast<uint8_t>(_v >> 16);\n";
+      os << "    buf[e.offset + 3] = static_cast<uint8_t>(_v >> 24);\n";
+      os << "    buf[e.offset + 4] = static_cast<uint8_t>(_v >> 32);\n";
+      os << "    buf[e.offset + 5] = static_cast<uint8_t>(_v >> 40);\n";
+      os << "    buf[e.offset + 6] = static_cast<uint8_t>(_v >> 48);\n";
+      os << "    buf[e.offset + 7] = static_cast<uint8_t>(_v >> 56); }\n";
+      break;
+  }
+  return os.str();
+}
+
+static std::string gen_decode_field_from_eoffset(const FieldInfo & f, const std::string & lhs)
+{
+  std::ostringstream os;
+
+  switch (f.field_type_enum) {
+    case protocan::FIELD_TYPE_BOOL:
+      os << "  " << lhs << " = (data[e.offset + 0] != 0);\n";
+      break;
+    case protocan::FIELD_TYPE_UINT8:
+      os << "  " << lhs << " = data[e.offset + 0];\n";
+      break;
+    case protocan::FIELD_TYPE_INT8:
+      os << "  " << lhs << " = static_cast<int8_t>(data[e.offset + 0]);\n";
+      break;
+    case protocan::FIELD_TYPE_UINT16:
+      os << "  " << lhs << " = static_cast<uint16_t>(data[e.offset + 0])"
+         << " | (static_cast<uint16_t>(data[e.offset + 1]) << 8);\n";
+      break;
+    case protocan::FIELD_TYPE_INT16:
+      os << "  { uint16_t _v = static_cast<uint16_t>(data[e.offset + 0])"
+         << " | (static_cast<uint16_t>(data[e.offset + 1]) << 8);\n";
+      os << "    " << lhs << " = static_cast<int16_t>(_v); }\n";
+      break;
+    case protocan::FIELD_TYPE_UINT32:
+      os << "  " << lhs << " = static_cast<uint32_t>(data[e.offset + 0])"
+         << " | (static_cast<uint32_t>(data[e.offset + 1]) << 8)"
+         << " | (static_cast<uint32_t>(data[e.offset + 2]) << 16)"
+         << " | (static_cast<uint32_t>(data[e.offset + 3]) << 24);\n";
+      break;
+    case protocan::FIELD_TYPE_INT32:
+      os << "  { uint32_t _v = static_cast<uint32_t>(data[e.offset + 0])"
+         << " | (static_cast<uint32_t>(data[e.offset + 1]) << 8)"
+         << " | (static_cast<uint32_t>(data[e.offset + 2]) << 16)"
+         << " | (static_cast<uint32_t>(data[e.offset + 3]) << 24);\n";
+      os << "    " << lhs << " = static_cast<int32_t>(_v); }\n";
+      break;
+    case protocan::FIELD_TYPE_FLOAT:
+      os << "  { uint32_t _v = static_cast<uint32_t>(data[e.offset + 0])"
+         << " | (static_cast<uint32_t>(data[e.offset + 1]) << 8)"
+         << " | (static_cast<uint32_t>(data[e.offset + 2]) << 16)"
+         << " | (static_cast<uint32_t>(data[e.offset + 3]) << 24);\n";
+      os << "    std::memcpy(&" << lhs << ", &_v, 4); }\n";
+      break;
+    case protocan::FIELD_TYPE_DOUBLE:
+      os << "  { uint64_t _v = static_cast<uint64_t>(data[e.offset + 0])"
+         << " | (static_cast<uint64_t>(data[e.offset + 1]) << 8)"
+         << " | (static_cast<uint64_t>(data[e.offset + 2]) << 16)"
+         << " | (static_cast<uint64_t>(data[e.offset + 3]) << 24)"
+         << " | (static_cast<uint64_t>(data[e.offset + 4]) << 32)"
+         << " | (static_cast<uint64_t>(data[e.offset + 5]) << 40)"
+         << " | (static_cast<uint64_t>(data[e.offset + 6]) << 48)"
+         << " | (static_cast<uint64_t>(data[e.offset + 7]) << 56);\n";
+      os << "    std::memcpy(&" << lhs << ", &_v, 8); }\n";
+      break;
+    case protocan::FIELD_TYPE_UINT64:
+      os << "  " << lhs << " = static_cast<uint64_t>(data[e.offset + 0])"
+         << " | (static_cast<uint64_t>(data[e.offset + 1]) << 8)"
+         << " | (static_cast<uint64_t>(data[e.offset + 2]) << 16)"
+         << " | (static_cast<uint64_t>(data[e.offset + 3]) << 24)"
+         << " | (static_cast<uint64_t>(data[e.offset + 4]) << 32)"
+         << " | (static_cast<uint64_t>(data[e.offset + 5]) << 40)"
+         << " | (static_cast<uint64_t>(data[e.offset + 6]) << 48)"
+         << " | (static_cast<uint64_t>(data[e.offset + 7]) << 56);\n";
+      break;
+    case protocan::FIELD_TYPE_INT64:
+      os << "  { uint64_t _v = static_cast<uint64_t>(data[e.offset + 0])"
+         << " | (static_cast<uint64_t>(data[e.offset + 1]) << 8)"
+         << " | (static_cast<uint64_t>(data[e.offset + 2]) << 16)"
+         << " | (static_cast<uint64_t>(data[e.offset + 3]) << 24)"
+         << " | (static_cast<uint64_t>(data[e.offset + 4]) << 32)"
+         << " | (static_cast<uint64_t>(data[e.offset + 5]) << 40)"
+         << " | (static_cast<uint64_t>(data[e.offset + 6]) << 48)"
+         << " | (static_cast<uint64_t>(data[e.offset + 7]) << 56);\n";
+      os << "    " << lhs << " = static_cast<int64_t>(_v); }\n";
+      break;
+  }
+  return os.str();
+}
+
 // ─── HPP generation ───────────────────────────────────────────────────────────
 
 static std::string ns_open(const std::string & package)
@@ -691,10 +850,23 @@ static std::string gen_hpp(const ServiceInfo & si)
   char hash_buf[16];
   std::snprintf(hash_buf, sizeof(hash_buf), "0x%08Xu", schema_hash);
 
+  // PDO エントリ数 = 全 TX/RX トピックのフィールド数の合計
+  int tx_pdo_field_count = 0;
+  int rx_pdo_field_count = 0;
+  for (const auto & rpc : si.rpcs) {
+    if (rpc.kind == RpcKind::TX_TOPIC && rpc.response_msg_idx >= 0) {
+      tx_pdo_field_count +=
+        static_cast<int>(si.messages[rpc.response_msg_idx].fields.size());
+    } else if (rpc.kind == RpcKind::RX_TOPIC && rpc.request_msg_idx >= 0) {
+      rx_pdo_field_count +=
+        static_cast<int>(si.messages[rpc.request_msg_idx].fields.size());
+    }
+  }
+
   o << "// ─── Schema constants ───\n";
   o << "constexpr uint32_t SCHEMA_HASH        = " << hash_buf << ";\n";
-  o << "constexpr uint8_t  MAX_PDO_TX_ENTRIES = " << si.tx_topic_count << ";\n";
-  o << "constexpr uint8_t  MAX_PDO_RX_ENTRIES = " << si.rx_topic_count << ";\n";
+  o << "constexpr uint8_t  MAX_PDO_TX_ENTRIES = " << tx_pdo_field_count << ";\n";
+  o << "constexpr uint8_t  MAX_PDO_RX_ENTRIES = " << rx_pdo_field_count << ";\n";
   o << "extern const uint8_t DESCRIPTOR_BLOB[];\n";
   o << "extern const size_t  DESCRIPTOR_BLOB_SIZE;\n";
   o << "\n";
@@ -936,10 +1108,11 @@ static std::string gen_cpp(const ServiceInfo & si)
     o << "  if (!send_pdo_fn_) return protocan::Status::NOT_FOUND;\n";
     o << "  for (uint8_t i = 0; i < pdo_tx_count(); ++i) {\n";
     o << "    if (pdo_tx_at(i).topic_index == " << rpc.index << ") {\n";
-    o << "      uint8_t buf[" << msg.proto_name << "::PACKED_SIZE];\n";
-    o << "      " << rpc.snake_name << "_buf_.encode(buf);\n";
-    o << "      return send_pdo_fn_(\n";
-    o << "        pdo_tx_at(i).pdo_id, buf, sizeof(buf), send_pdo_ctx_);\n";
+    o << "      uint16_t pdo_id = pdo_tx_at(i).pdo_id;\n";
+    o << "      uint8_t buf[64] = {};\n";
+    o << "      uint8_t len = fill_pdo_tx(pdo_id, buf, 64);\n";
+    o << "      if (len == 0) return protocan::Status::NOT_FOUND;\n";
+    o << "      return send_pdo_fn_(pdo_id, buf, len, send_pdo_ctx_);\n";
     o << "    }\n";
     o << "  }\n";
     o << "  return protocan::Status::NOT_FOUND;\n";
@@ -985,56 +1158,88 @@ static std::string gen_cpp(const ServiceInfo & si)
 
   // on_pdo_rx
   o << "void Node::on_pdo_rx(uint16_t pdo_id, const uint8_t * data, uint8_t len) {\n";
+  if (si.rx_topic_count > 0) {
+    // updated フラグを topic ごとに宣言
+    for (const auto & rpc : si.rpcs) {
+      if (rpc.kind != RpcKind::RX_TOPIC) continue;
+      o << "  bool " << rpc.snake_name << "_updated = false;\n";
+    }
+  }
   o << "  for (uint8_t i = 0; i < pdo_rx_count(); ++i) {\n";
   o << "    const auto & e = pdo_rx_at(i);\n";
-  o << "    if (e.pdo_id == pdo_id) {\n";
+  o << "    if (e.pdo_id != pdo_id) continue;\n";
+  o << "    if (e.offset + e.size > len) continue;\n";
   if (si.rx_topic_count > 0) {
-    o << "      switch (e.topic_index) {\n";
+    o << "    switch (e.topic_index) {\n";
     for (const auto & rpc : si.rpcs) {
       if (rpc.kind != RpcKind::RX_TOPIC) continue;
       if (rpc.request_msg_idx < 0) continue;
       const MessageInfo & msg = si.messages[rpc.request_msg_idx];
-      o << "        case " << rpc.index << ":  // " << rpc.snake_name << "\n";
-      o << "          if (e.offset + " << msg.proto_name << "::PACKED_SIZE <= len) {\n";
-      o << "            " << rpc.snake_name << "_rx_buf_ = "
-        << msg.proto_name << "::decode(data + e.offset);\n";
-      o << "            if (" << rpc.snake_name << "_cb_) {\n";
-      o << "              " << rpc.snake_name << "_cb_(" << rpc.snake_name
-        << "_rx_buf_, " << rpc.snake_name << "_ctx_);\n";
-      o << "            }\n";
-      o << "          }\n";
-      o << "          break;\n";
+      o << "      case " << rpc.index << ": {  // " << rpc.snake_name << "\n";
+      o << "        switch (e.field_index) {\n";
+      for (size_t fi = 0; fi < msg.fields.size(); ++fi) {
+        const FieldInfo & f = msg.fields[fi];
+        const std::string lhs = rpc.snake_name + "_rx_buf_." + f.name;
+        o << "          case " << fi << ": {\n";
+        o << gen_decode_field_from_eoffset(f, lhs);
+        o << "            break;\n";
+        o << "          }\n";
+      }
+      o << "          default: break;\n";
+      o << "        }\n";
+      o << "        " << rpc.snake_name << "_updated = true;\n";
+      o << "        break;\n";
+      o << "      }\n";
     }
-    o << "        default: break;\n";
-    o << "      }\n";
+    o << "      default: break;\n";
+    o << "    }\n";
   }
-  o << "    }\n";
   o << "  }\n";
+  if (si.rx_topic_count > 0) {
+    for (const auto & rpc : si.rpcs) {
+      if (rpc.kind != RpcKind::RX_TOPIC) continue;
+      o << "  if (" << rpc.snake_name << "_updated && " << rpc.snake_name << "_cb_) "
+        << rpc.snake_name << "_cb_(" << rpc.snake_name << "_rx_buf_, "
+        << rpc.snake_name << "_ctx_);\n";
+    }
+  }
   o << "}\n\n";
 
   // fill_pdo_tx
   o << "uint8_t Node::fill_pdo_tx(uint16_t pdo_id, uint8_t * buf, uint8_t max_len) {\n";
+  o << "  uint8_t result_len = 0;\n";
   o << "  for (uint8_t i = 0; i < pdo_tx_count(); ++i) {\n";
-  o << "    if (pdo_tx_at(i).pdo_id == pdo_id) {\n";
+  o << "    const auto & e = pdo_tx_at(i);\n";
+  o << "    if (e.pdo_id != pdo_id) continue;\n";
+  o << "    if (e.offset + e.size > max_len) continue;\n";
   if (si.tx_topic_count > 0) {
-    o << "      switch (pdo_tx_at(i).topic_index) {\n";
+    o << "    switch (e.topic_index) {\n";
     for (const auto & rpc : si.rpcs) {
       if (rpc.kind != RpcKind::TX_TOPIC) continue;
       if (rpc.response_msg_idx < 0) continue;
       const MessageInfo & msg = si.messages[rpc.response_msg_idx];
-      o << "        case " << rpc.index << ":  // " << rpc.snake_name << "\n";
-      o << "          if (" << msg.proto_name << "::PACKED_SIZE <= max_len) {\n";
-      o << "            " << rpc.snake_name << "_buf_.encode(buf);\n";
-      o << "            return static_cast<uint8_t>(" << msg.proto_name << "::PACKED_SIZE);\n";
-      o << "          }\n";
-      o << "          return 0;\n";
+      o << "      case " << rpc.index << ": {  // " << rpc.snake_name << "\n";
+      o << "        switch (e.field_index) {\n";
+      for (size_t fi = 0; fi < msg.fields.size(); ++fi) {
+        const FieldInfo & f = msg.fields[fi];
+        const std::string src = rpc.snake_name + "_buf_." + f.name;
+        o << "          case " << fi << ": {\n";
+        o << gen_encode_field_to_eoffset(f, src);
+        o << "            break;\n";
+        o << "          }\n";
+      }
+      o << "          default: break;\n";
+      o << "        }\n";
+      o << "        { uint8_t _end = static_cast<uint8_t>(e.offset + e.size);\n";
+      o << "          if (_end > result_len) result_len = _end; }\n";
+      o << "        break;\n";
+      o << "      }\n";
     }
-    o << "        default: return 0;\n";
-    o << "      }\n";
+    o << "      default: break;\n";
+    o << "    }\n";
   }
-  o << "    }\n";
   o << "  }\n";
-  o << "  return 0;\n";
+  o << "  return result_len;\n";
   o << "}\n\n";
 
   // on_param_read

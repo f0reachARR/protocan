@@ -51,11 +51,12 @@ TEST(NodeBaseTest, AddPdoRx)
 {
   TestNode node(1);
 
-  PdoRxEntry e{0x100, 0, 0, 4};
+  PdoRxEntry e{0x100, 0, 0, 0, 4};
   EXPECT_EQ(node.add_pdo_rx(e), Status::OK);
   EXPECT_EQ(node.pdo_rx_count(), 1u);
   EXPECT_EQ(node.pdo_rx_at(0).pdo_id, 0x100u);
   EXPECT_EQ(node.pdo_rx_at(0).topic_index, 0u);
+  EXPECT_EQ(node.pdo_rx_at(0).field_index, 0u);
   EXPECT_EQ(node.pdo_rx_at(0).offset, 0u);
   EXPECT_EQ(node.pdo_rx_at(0).size, 4u);
 }
@@ -65,13 +66,13 @@ TEST(NodeBaseTest, AddPdoRxLimit)
   TestNode node(1);
 
   for (uint8_t i = 0; i < kMaxPdoPerNode; ++i) {
-    PdoRxEntry e{static_cast<uint16_t>(0x100 + i), i, 0, 4};
+    PdoRxEntry e{static_cast<uint16_t>(0x100 + i), i, 0, 0, 4};
     EXPECT_EQ(node.add_pdo_rx(e), Status::OK);
   }
   EXPECT_EQ(node.pdo_rx_count(), kMaxPdoPerNode);
 
   // 上限超え
-  PdoRxEntry overflow{0x200, 0, 0, 4};
+  PdoRxEntry overflow{0x200, 0, 0, 0, 4};
   EXPECT_EQ(node.add_pdo_rx(overflow), Status::NO_RESOURCE);
   EXPECT_EQ(node.pdo_rx_count(), kMaxPdoPerNode);
 }
@@ -84,11 +85,12 @@ TEST(NodeBaseTest, AddPdoTx)
 {
   TestNode node(1);
 
-  PdoTxEntry e{0x200, 1, 100, 0};
+  PdoTxEntry e{0x200, 1, 0, 0, 0, 100, 0};
   EXPECT_EQ(node.add_pdo_tx(e), Status::OK);
   EXPECT_EQ(node.pdo_tx_count(), 1u);
   EXPECT_EQ(node.pdo_tx_at(0).pdo_id, 0x200u);
   EXPECT_EQ(node.pdo_tx_at(0).topic_index, 1u);
+  EXPECT_EQ(node.pdo_tx_at(0).field_index, 0u);
   EXPECT_EQ(node.pdo_tx_at(0).period_ms, 100u);
 }
 
@@ -97,12 +99,12 @@ TEST(NodeBaseTest, AddPdoTxLimit)
   TestNode node(1);
 
   for (uint8_t i = 0; i < kMaxPdoPerNode; ++i) {
-    PdoTxEntry e{static_cast<uint16_t>(0x200 + i), i, 100, 0};
+    PdoTxEntry e{static_cast<uint16_t>(0x200 + i), i, 0, 0, 0, 100, 0};
     EXPECT_EQ(node.add_pdo_tx(e), Status::OK);
   }
   EXPECT_EQ(node.pdo_tx_count(), kMaxPdoPerNode);
 
-  PdoTxEntry overflow{0x300, 0, 100, 0};
+  PdoTxEntry overflow{0x300, 0, 0, 0, 0, 100, 0};
   EXPECT_EQ(node.add_pdo_tx(overflow), Status::NO_RESOURCE);
   EXPECT_EQ(node.pdo_tx_count(), kMaxPdoPerNode);
 }
@@ -115,11 +117,11 @@ TEST(NodeBaseTest, ClearPdo)
 {
   TestNode node(1);
 
-  node.add_pdo_rx({0x100, 0, 0, 4});
-  node.add_pdo_rx({0x101, 1, 4, 4});
-  node.add_pdo_rx({0x100, 2, 8, 4});  // 同一 pdo_id
-  node.add_pdo_tx({0x200, 0, 100, 0});
-  node.add_pdo_tx({0x200, 1, 200, 0});  // 同一 pdo_id
+  node.add_pdo_rx({0x100, 0, 0, 0, 4});
+  node.add_pdo_rx({0x101, 1, 0, 4, 4});
+  node.add_pdo_rx({0x100, 2, 0, 8, 4});  // 同一 pdo_id
+  node.add_pdo_tx({0x200, 0, 0, 0, 0, 100, 0});
+  node.add_pdo_tx({0x200, 1, 0, 0, 0, 200, 0});  // 同一 pdo_id
 
   EXPECT_EQ(node.pdo_rx_count(), 3u);
   EXPECT_EQ(node.pdo_tx_count(), 2u);
@@ -140,8 +142,8 @@ TEST(NodeBaseTest, ResetPdos)
 {
   TestNode node(1);
 
-  node.add_pdo_rx({0x100, 0, 0, 4});
-  node.add_pdo_tx({0x200, 0, 100, 0});
+  node.add_pdo_rx({0x100, 0, 0, 0, 4});
+  node.add_pdo_tx({0x200, 0, 0, 0, 0, 100, 0});
   EXPECT_EQ(node.pdo_rx_count(), 1u);
   EXPECT_EQ(node.pdo_tx_count(), 1u);
 

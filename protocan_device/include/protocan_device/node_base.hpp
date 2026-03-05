@@ -14,15 +14,19 @@ static constexpr uint8_t kMaxPdoPerNode = 8;
 struct PdoRxEntry
 {
   uint16_t pdo_id;
-  uint8_t topic_index;
-  uint8_t offset;
-  uint8_t size;
+  uint8_t  topic_index;
+  uint8_t  field_index;
+  uint8_t  offset;
+  uint8_t  size;
 };
 
 struct PdoTxEntry
 {
   uint16_t pdo_id;
-  uint8_t topic_index;
+  uint8_t  topic_index;
+  uint8_t  field_index;
+  uint8_t  offset;
+  uint8_t  size;
   uint16_t period_ms;
   uint32_t last_tx_ms;
 };

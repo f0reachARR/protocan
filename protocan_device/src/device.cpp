@@ -105,14 +105,27 @@ void Device::poll()
   if (state_ == DeviceState::OPERATIONAL) {
     for (uint8_t ni = 0; ni < node_count_; ++ni) {
       NodeBase * node = nodes_[ni];
+      // 同一 pdo_id を 1 回だけ送信するための dedup リスト
+      uint16_t sent_pdo_ids[kMaxPdoPerNode];
+      uint8_t  sent_count = 0;
       for (uint8_t pi = 0; pi < node->pdo_tx_count(); ++pi) {
         PdoTxEntry & e = node->pdo_tx_at(pi);
         if (e.period_ms > 0 && (now - e.last_tx_ms) >= e.period_ms) {
-          uint8_t buf[64] = {};
-          uint8_t len = node->fill_pdo_tx(e.pdo_id, buf, 64);
-          if (len > 0) {
-            CanFrame pdo_frame = make_standard_frame(e.pdo_id, buf, len);
-            send_frame(pdo_frame);
+          // pdo_id が未送信なら fill して送信
+          bool already_sent = false;
+          for (uint8_t k = 0; k < sent_count; ++k) {
+            if (sent_pdo_ids[k] == e.pdo_id) { already_sent = true; break; }
+          }
+          if (!already_sent) {
+            uint8_t buf[64] = {};
+            uint8_t len = node->fill_pdo_tx(e.pdo_id, buf, 64);
+            if (len > 0) {
+              CanFrame pdo_frame = make_standard_frame(e.pdo_id, buf, len);
+              send_frame(pdo_frame);
+            }
+            if (sent_count < kMaxPdoPerNode) {
+              sent_pdo_ids[sent_count++] = e.pdo_id;
+            }
           }
           e.last_tx_ms = now;
         }
@@ -532,32 +545,37 @@ PdoCfgStatus Device::commit_pdo_cfg()
     if (!node) continue;
 
     if (pdo_cfg_pending_.dir == PdoCfgDirection::TX) {
-      // 同一 (pdo_id, topic_index) が既に存在すればスキップ
+      // 同一 (pdo_id, topic_index, field_index) が既に存在すればスキップ
       bool found = false;
       for (uint8_t pi = 0; pi < node->pdo_tx_count(); ++pi) {
         const PdoTxEntry & existing = node->pdo_tx_at(pi);
         if (existing.pdo_id == pdo_cfg_pending_.pdo_id &&
-            existing.topic_index == entry.topic_index) {
+            existing.topic_index == entry.topic_index &&
+            existing.field_index == entry.field_index) {
           found = true;
           break;
         }
       }
       if (!found) {
         PdoTxEntry tx_entry;
-        tx_entry.pdo_id = pdo_cfg_pending_.pdo_id;
+        tx_entry.pdo_id      = pdo_cfg_pending_.pdo_id;
         tx_entry.topic_index = entry.topic_index;
-        tx_entry.period_ms = pdo_cfg_pending_.period_ms;
-        tx_entry.last_tx_ms = 0;
+        tx_entry.field_index = entry.field_index;
+        tx_entry.offset      = entry.offset;
+        tx_entry.size        = entry.size;
+        tx_entry.period_ms   = pdo_cfg_pending_.period_ms;
+        tx_entry.last_tx_ms  = 0;
         Status s = node->add_pdo_tx(tx_entry);
         if (s != Status::OK) overall = PdoCfgStatus::NO_RESOURCE;
       }
     } else {
       // RX
       PdoRxEntry rx_entry;
-      rx_entry.pdo_id = pdo_cfg_pending_.pdo_id;
+      rx_entry.pdo_id      = pdo_cfg_pending_.pdo_id;
       rx_entry.topic_index = entry.topic_index;
-      rx_entry.offset = entry.offset;
-      rx_entry.size = entry.size;
+      rx_entry.field_index = entry.field_index;
+      rx_entry.offset      = entry.offset;
+      rx_entry.size        = entry.size;
       Status s = node->add_pdo_rx(rx_entry);
       if (s != Status::OK) overall = PdoCfgStatus::NO_RESOURCE;
     }

@@ -200,8 +200,8 @@ TEST_F(NodeApiTest, DescriptorBlobIsNonEmpty)
 
 TEST_F(NodeApiTest, MaxPdoEntryConstants)
 {
-  EXPECT_EQ(bm::MAX_PDO_TX_ENTRIES, 1u);  // Status topic
-  EXPECT_EQ(bm::MAX_PDO_RX_ENTRIES, 1u);  // Command topic
+  EXPECT_EQ(bm::MAX_PDO_TX_ENTRIES, 4u);  // MotorStatus: 4 fields
+  EXPECT_EQ(bm::MAX_PDO_RX_ENTRIES, 2u);  // TwistCommand: 2 fields
 }
 
 // ── fill_pdo_tx ───────────────────────────────────────────────
@@ -214,8 +214,12 @@ TEST_F(NodeApiTest, FillPdoTxReturnsZeroWithNoEntry)
 
 TEST_F(NodeApiTest, FillPdoTxEncodesMotorStatus)
 {
-  PdoTxEntry entry{0x100, 0, 100, 0};
-  node.add_pdo_tx(entry);
+  // MotorStatus: current_a(f=0,off=0,sz=4), velocity_rps(f=1,off=4,sz=4),
+  //              temperature_c(f=2,off=8,sz=4), error_flags(f=3,off=12,sz=1)
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 0, 0,  4, 100, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 1, 4,  4, 100, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 2, 8,  4, 100, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 3, 12, 1, 100, 0});
 
   node.status_buffer() = {1.5f, -2.5f, 30.0f, 0x42u};
 
@@ -233,18 +237,16 @@ TEST_F(NodeApiTest, FillPdoTxEncodesMotorStatus)
 
 TEST_F(NodeApiTest, FillPdoTxReturnsZeroIfBufTooSmall)
 {
-  PdoTxEntry entry{0x100, 0, 100, 0};
-  node.add_pdo_tx(entry);
+  // current_a: offset=0, size=4 → offset+size=4 > max_len=3 → skip → len=0
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 0, 0, 4, 100, 0});
 
   uint8_t buf[4] = {};
-  // max_len=4 < PACKED_SIZE=13 → 0 を返す
-  EXPECT_EQ(node.fill_pdo_tx(0x100, buf, 4), 0u);
+  EXPECT_EQ(node.fill_pdo_tx(0x100, buf, 3), 0u);
 }
 
 TEST_F(NodeApiTest, FillPdoTxIgnoresWrongPdoId)
 {
-  PdoTxEntry entry{0x100, 0, 100, 0};
-  node.add_pdo_tx(entry);
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 0, 0, 4, 100, 0});
 
   uint8_t buf[64] = {};
   // 違う pdo_id → 0
@@ -255,8 +257,9 @@ TEST_F(NodeApiTest, FillPdoTxIgnoresWrongPdoId)
 
 TEST_F(NodeApiTest, OnPdoRxDeliversToCallback)
 {
-  PdoRxEntry entry{0x200, 0, 0, bm::TwistCommand::PACKED_SIZE};
-  node.add_pdo_rx(entry);
+  // TwistCommand: linear_x(f=0,off=0,sz=4), angular_z(f=1,off=4,sz=4)
+  node.add_pdo_rx(PdoRxEntry{0x200, 0, 0, 0, 4});
+  node.add_pdo_rx(PdoRxEntry{0x200, 0, 1, 4, 4});
 
   struct Ctx {
     bool             called;
@@ -284,8 +287,8 @@ TEST_F(NodeApiTest, OnPdoRxDeliversToCallback)
 
 TEST_F(NodeApiTest, OnPdoRxNoCallbackRegistered)
 {
-  PdoRxEntry entry{0x200, 0, 0, bm::TwistCommand::PACKED_SIZE};
-  node.add_pdo_rx(entry);
+  node.add_pdo_rx(PdoRxEntry{0x200, 0, 0, 0, 4});
+  node.add_pdo_rx(PdoRxEntry{0x200, 0, 1, 4, 4});
 
   // コールバック未登録 → クラッシュしない
   uint8_t buf[8] = {};
@@ -294,17 +297,16 @@ TEST_F(NodeApiTest, OnPdoRxNoCallbackRegistered)
 
 TEST_F(NodeApiTest, OnPdoRxSkipsIfTooShort)
 {
-  PdoRxEntry entry{0x200, 0, 0, bm::TwistCommand::PACKED_SIZE};
-  node.add_pdo_rx(entry);
+  // linear_x: offset=0, size=4 → offset+size=4 > len=3 → skip → callback not called
+  node.add_pdo_rx(PdoRxEntry{0x200, 0, 0, 0, 4});
 
   bool called = false;
   node.on_cmd_vel(
     [](const bm::TwistCommand &, void * p) { *static_cast<bool *>(p) = true; },
     &called);
 
-  // offset=0, PACKED_SIZE=8 だが len=4 → コールバック呼ばれない
   uint8_t buf[4] = {};
-  node.on_pdo_rx(0x200, buf, 4);
+  node.on_pdo_rx(0x200, buf, 3);
   EXPECT_FALSE(called);
 }
 
@@ -496,9 +498,11 @@ TEST_F(NodeApiTest, PublishStatusSendsEncodedFrame)
     },
     &sent);
 
-  // TX エントリ登録 (pdo_id=0x100, topic_index=0)
-  PdoTxEntry entry{0x100, 0, 100, 0};
-  node.add_pdo_tx(entry);
+  // TX エントリ登録 (pdo_id=0x100, topic_index=0, 全フィールド)
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 0, 0,  4, 100, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 1, 4,  4, 100, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 2, 8,  4, 100, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 3, 12, 1, 100, 0});
 
   node.status_buffer() = {2.0f, 3.0f, 25.0f, 0x01u};
 
@@ -604,8 +608,10 @@ TEST_F(DeviceIntegrationTest, AddNodeInjectsSendPdoTrampoline)
 
   // TX エントリを直接登録し publish_status() を呼ぶ
   // → Device::send_pdo_trampoline 経由で CAN に送信される
-  PdoTxEntry entry{0x100, 0, 0, 0};
-  node.add_pdo_tx(entry);
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 0, 0,  4, 0, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 1, 4,  4, 0, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 2, 8,  4, 0, 0});
+  node.add_pdo_tx(PdoTxEntry{0x100, 0, 3, 12, 1, 0, 0});
   node.status_buffer() = {5.0f, 0.0f, 0.0f, 0};
 
   Status s = node.publish_status();
@@ -627,8 +633,10 @@ TEST_F(DeviceIntegrationTest, PublishStatusSendsCorrectPdoViaCan)
   boot_to_operational(dev);
 
   // PDO_CFG で TX エントリを直接追加
-  PdoTxEntry tx_entry{0x101, 0, 0, 0};
-  node.add_pdo_tx(tx_entry);
+  node.add_pdo_tx(PdoTxEntry{0x101, 0, 0, 0,  4, 0, 0});
+  node.add_pdo_tx(PdoTxEntry{0x101, 0, 1, 4,  4, 0, 0});
+  node.add_pdo_tx(PdoTxEntry{0x101, 0, 2, 8,  4, 0, 0});
+  node.add_pdo_tx(PdoTxEntry{0x101, 0, 3, 12, 1, 0, 0});
 
   node.status_buffer() = {1.0f, 2.0f, 40.0f, 0x03u};
 
@@ -653,8 +661,10 @@ TEST_F(DeviceIntegrationTest, PeriodicPdoTxSentInOperational)
   boot_to_operational(dev);
 
   // period_ms=50 の TX エントリを追加
-  PdoTxEntry tx_entry{0x102, 0, 50, 0};
-  node.add_pdo_tx(tx_entry);
+  node.add_pdo_tx(PdoTxEntry{0x102, 0, 0, 0,  4, 50, 0});
+  node.add_pdo_tx(PdoTxEntry{0x102, 0, 1, 4,  4, 50, 0});
+  node.add_pdo_tx(PdoTxEntry{0x102, 0, 2, 8,  4, 50, 0});
+  node.add_pdo_tx(PdoTxEntry{0x102, 0, 3, 12, 1, 50, 0});
   node.status_buffer() = {9.0f, 0.0f, 0.0f, 0};
 
   // 50ms 経過させて poll() → 定期送信が発火する
@@ -676,8 +686,9 @@ TEST_F(DeviceIntegrationTest, PdoRxViaCanDeliveredToCallback)
   boot_to_operational(dev);
 
   // RX エントリを追加 (pdo_id=0x200, topic_index=0=cmd_vel)
-  PdoRxEntry rx_entry{0x200, 0, 0, bm::TwistCommand::PACKED_SIZE};
-  node.add_pdo_rx(rx_entry);
+  // TwistCommand: linear_x(f=0,off=0,sz=4), angular_z(f=1,off=4,sz=4)
+  node.add_pdo_rx(PdoRxEntry{0x200, 0, 0, 0, 4});
+  node.add_pdo_rx(PdoRxEntry{0x200, 0, 1, 4, 4});
 
   struct Ctx {
     bool             called = false;

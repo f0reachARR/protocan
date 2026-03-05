@@ -489,7 +489,7 @@ TEST_F(DeviceTest, PdoCfgDeleteClearsEntries)
   dev.poll();
 
   // 直接エントリを追加
-  node.add_pdo_rx({0x300, 0, 0, 4});
+  node.add_pdo_rx({0x300, 0, 0, 0, 4});
   EXPECT_EQ(node.pdo_rx_count(), 1u);
   can.clear();
 
@@ -686,7 +686,7 @@ TEST_F(DeviceTest, PdoRxDeliveredToNode)
   dev.poll();
 
   // PDO RX エントリを追加
-  node.add_pdo_rx({0x100, 0, 0, 4});
+  node.add_pdo_rx({0x100, 0, 0, 0, 4});
 
   // PDO フレーム受信
   uint8_t pdo_data[] = {0x11, 0x22, 0x33, 0x44};
