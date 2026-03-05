@@ -28,3 +28,9 @@ gtest_discover_tests(test_bulk_transfer)
 add_executable(test_pdo_manager test_pdo_manager.cpp)
 target_link_libraries(test_pdo_manager PRIVATE protocan GTest::gtest_main)
 gtest_discover_tests(test_pdo_manager)
+
+# ── test_master ──
+add_executable(test_master test_master.cpp)
+target_include_directories(test_master PRIVATE "${CMAKE_BINARY_DIR}/proto_gen")
+target_link_libraries(test_master PRIVATE protocan GTest::gtest_main)
+gtest_discover_tests(test_master)
