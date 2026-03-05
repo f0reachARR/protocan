@@ -194,12 +194,18 @@ service BLDCMotor {
 | Proto 型 | CAN バイナリ | サイズ | ROS 2 型 |
 |----------|-------------|-------|---------|
 | `bool`   | uint8 (0/1) | 1B | bool |
+| `uint32`† | LE u8  | 1B | uint8 |
+| `int32`†  | LE i8  | 1B | int8 |
+| `uint32`† | LE u16 | 2B | uint16 |
+| `int32`†  | LE i16 | 2B | int16 |
 | `uint32` | LE u32 | 4B | uint32 |
 | `int32`  | LE i32 | 4B | int32 |
 | `float`  | IEEE 754 LE | 4B | float32 |
 | `double` | IEEE 754 LE | 8B | float64 |
 | `uint64` | LE u64 | 8B | uint64 |
 | `int64`  | LE i64 | 8B | int64 |
+
+*† Proto3 には 8-bit / 16-bit のネイティブ型が存在しないため、ワイヤ上は `uint32` / `int32` として扱う。CAN バイナリ (Packed Binary) でのサイズは `protoc-gen-protocan` が `FieldType` enum に基づいて決定する（詳細は `descriptor_spec.md` §3.2 を参照）。*
 
 *(※ v0.7 現在、データペイロードとしての `string`, `bytes`, `repeated`, `oneof` 等の可変長データは非サポート)*
 
@@ -209,7 +215,7 @@ service BLDCMotor {
 
 ### 3.1 構成と目的
 
-- スキーマハッシュは、生成される **Node Type ごとの Descriptor Blob バイナリデータ列** を入力として **コンパイル時に計算** された 32-bit (FNV-1a) ハッシュ値である。入出力構造が単一のバイナリ（詳細は `descriptor_spec.md` を参照）に厳密に定まるため、ジェネレータの環境依存によるハッシュ揺らぎが発生しない。
+- スキーマハッシュは、`protoc-gen-protocan` が生成する **`protocan.NodeDescriptor` メッセージ（`schema_hash` フィールドを 0 とした状態）の Protobuf deterministic serialization 結果** を入力として **コンパイル時に計算** された 32-bit (FNV-1a) ハッシュ値である。Protobuf の deterministic serialization により、同一の `.proto` 定義からは常に同一のバイト列が生成されるため、ジェネレータの環境依存によるハッシュ揺らぎが発生しない。
 - 複数の同じ Node Type のインスタンス（例: 2つのモーターノード）が存在する場合、それらは全く同じ `schema_hash` を持つ。
 - これにより、`node_type_id` や `schema_version` といった ID を明示的に割り当てたり手動管理する必要がなくなる。
 - ハートビート（NMT）にはデバイス上の全稼働ノードインスタンスの `schema_hash` が含まれ、PC側（ブリッジ）はそのハッシュを見て、未知のハッシュ種別であればディスクリプタを要求し、既知（キャッシュ済）であれば即座に通信を開始する。
@@ -575,11 +581,12 @@ void on_cmd_vel_received(const protocan_twist_command_t *cmd, void *ctx) {
 
 ### 7.1 ディスクリプタ (Descriptor Blob)
 
-ファームウェアに配置されるディスクリプタは、`protoc` プラグインが生成した **Node Type ごとの定数バイナリ配列** である (`const uint8_t[]`)。
+ファームウェアに配置されるディスクリプタは、`protoc-gen-protocan` が `.proto` スキーマから生成した **`protocan.NodeDescriptor` メッセージの Protobuf シリアライズバイナリ** であり、Node Type ごとの定数バイナリ配列 (`const uint8_t[]`) として ROM に配置される。
 ファームウェア自身はディスクリプタをパースせず、ブリッジからの DISC 要求に対して当該 `local_node_id` に対応する Descriptor Blob を応答として転送する。
 
-ブリッジ側は受信した Blob をパースし、Node Type の内部構造（Topic, Service, Param）を動的に復元する。
-> **Note**: Descriptor Blob のバイナリデータレイアウトの詳細仕様については、別紙 `descriptor_spec.md` を参照のこと。
+ブリッジ側は受信した Blob を `protocan.NodeDescriptor` としてデコードし、Node Type の内部構造（Topic・Service・Param の一覧とフィールド構造）を動的に復元する。フィールドレベルの型・オフセット情報を含むため、ROS 2 メッセージへの動的マッピングやデバイス間ルーティングの互換性検証にも利用される。
+
+> **Note**: Descriptor Blob のメッセージ定義 (`protocan/descriptor.proto`) と詳細仕様については、別紙 `descriptor_spec.md` を参照のこと。
 
 ### 7.2 C API コードフレームワーク
 
