@@ -87,6 +87,19 @@ struct MasterCallbacks
     on_param_response;
 };
 
+/// マスター内での自動オーケストレーション設定
+struct MasterAutomationOptions
+{
+  /// HEARTBEAT 受信時に未知 schema の descriptor を自動要求する
+  bool auto_request_descriptors = true;
+
+  /// descriptor が揃ったデバイスの PDO を自動構成する
+  bool auto_configure_pdo = true;
+
+  /// 自動構成時に PREOP への遷移と START 遷移を自動実行する
+  bool auto_manage_state = true;
+};
+
 // ════════════════════════════════════════════════════════════════
 // マスターオーケストレータ
 // ════════════════════════════════════════════════════════════════
@@ -101,7 +114,10 @@ class Master
 public:
   /// @param can_if  CAN バスインターフェース (所有権は呼び出し側)
   /// @param callbacks  イベントコールバック群
-  explicit Master(ICanInterface & can_if, MasterCallbacks callbacks = {});
+  /// @param automation  自動構成・状態遷移のオプション
+  explicit Master(
+    ICanInterface & can_if, MasterCallbacks callbacks = {},
+    MasterAutomationOptions automation = {});
 
   ~Master();
 
@@ -163,6 +179,11 @@ public:
   PdoManager & pdo_manager() { return pdo_mgr_; }
   const PdoManager & pdo_manager() const { return pdo_mgr_; }
 
+  /// 指定トピックに対応する PDO ID を検索する
+  std::optional<uint16_t> find_pdo_id(
+    uint8_t device_id, uint8_t local_node_id, uint8_t topic_index, PdoCfgDirection direction)
+    const;
+
 private:
   // ── フレームディスパッチ ──
   void process_frame(const CanFrame & frame);
@@ -183,10 +204,15 @@ private:
 
   // ── ヘルパー ──
   Status send_frame(const CanFrame & frame);
+  bool has_all_descriptors(const DeviceInfo & info) const;
+  bool node_topology_changed(uint8_t device_id, const DeviceInfo & info) const;
+  void run_automation_for_device(uint8_t device_id);
+  Status reconfigure_device(uint8_t device_id, const DeviceInfo & info);
 
   // ── メンバ ──
   ICanInterface & can_if_;
   MasterCallbacks callbacks_;
+  MasterAutomationOptions automation_;
   DeviceTracker tracker_;
   PdoManager pdo_mgr_;
   BulkChannelManager bulk_channels_;
@@ -222,6 +248,16 @@ private:
   };
   std::unordered_map<uint8_t, PendingService> pending_services_;  // seq_id → info
   uint8_t next_service_seq_ = 0;
+
+  struct AutoDeviceState
+  {
+    bool preop_requested = false;
+    bool start_requested = false;
+    bool pdo_configured = false;
+    std::vector<NodeInfo> configured_nodes;
+    std::vector<uint16_t> configured_pdo_ids;
+  };
+  std::unordered_map<uint8_t, AutoDeviceState> auto_device_states_;
 
   /// Heartbeat タイムアウト閾値
   std::chrono::milliseconds heartbeat_timeout_{3000};

@@ -146,16 +146,7 @@ ProtoCanbridgeNode::~ProtoCanbridgeNode() { can_if_.close(); }
 // Timer callbacks
 // ════════════════════════════════════════════════════════════════
 
-void ProtoCanbridgeNode::on_poll()
-{
-  master_.poll();
-
-  // Request descriptors for any newly-seen, unknown schema_hashes
-  for (auto & [hash, dev, node] : master_.device_tracker().collect_unknown_schemas()) {
-    (void)hash;
-    master_.send_disc_get_descriptor(dev, node);
-  }
-}
+void ProtoCanbridgeNode::on_poll() { master_.poll(); }
 
 void ProtoCanbridgeNode::on_tick() { master_.tick(std::chrono::steady_clock::now()); }
 
@@ -179,8 +170,8 @@ void ProtoCanbridgeNode::on_device_timeout(uint8_t device_id)
     if (handler.device_id == device_id) {
       to_remove.push_back(key);
       // Release PDO allocations for RX topics
-      for (auto & [tidx, th] : handler.topics) {
-        if (!th.is_tx && th.pdo_id != 0) {
+      for (auto & [tidx, th] : handler.rx_topics) {
+        if (th.pdo_id != 0) {
           master_.pdo_manager().release(th.pdo_id);
           pdo_rx_buffers_.erase(th.pdo_id);
         }
@@ -235,31 +226,11 @@ void ProtoCanbridgeNode::on_descriptor_received(
     auto pub =
       babel_fish_.create_publisher(*this, full_topic, topic.message.ros2_msg_type, rclcpp::QoS(10));
     TopicHandle th;
-    th.is_tx = true;
     th.publisher = pub;
-    handler.topics[topic.index] = std::move(th);
+    handler.tx_topics[topic.index] = std::move(th);
     RCLCPP_INFO(
       get_logger(), "  TX publisher: %s [%s]", full_topic.c_str(),
       topic.message.ros2_msg_type.c_str());
-  }
-
-  // ── Generate and send PDO mappings ──
-  protocan::NodeConfig cfg{local_node_id, &handler.desc};
-  auto mappings = master_.pdo_manager().generate_optimal_mappings(device_id, {cfg});
-
-  for (auto & m : mappings) {
-    master_.send_pdo_cfg(device_id, m);
-    master_.pdo_manager().set_mapping(m);
-
-    // For RX PDOs: record pdo_id per topic_index
-    if (m.direction == protocan::PdoCfgDirection::RX) {
-      for (auto & entry : m.entries) {
-        auto it = handler.topics.find(entry.topic_index);
-        if (it != handler.topics.end() && !it->second.is_tx) {
-          it->second.pdo_id = m.pdo_id;
-        }
-      }
-    }
   }
 
   // ── Create RX subscriptions (ROS → device) ──
@@ -275,9 +246,12 @@ void ProtoCanbridgeNode::on_descriptor_received(
         on_rx_topic(hkey, tidx, *msg);
       });
 
-    // The handler.topics entry may already exist (pdo_id was set above)
-    auto & th = handler.topics[tidx];
-    th.is_tx = false;
+    auto & th = handler.rx_topics[tidx];
+    if (
+      auto pdo_id = master_.find_pdo_id(
+        device_id, local_node_id, static_cast<uint8_t>(tidx), protocan::PdoCfgDirection::RX)) {
+      th.pdo_id = *pdo_id;
+    }
     th.subscription = sub;
     RCLCPP_INFO(
       get_logger(), "  RX subscription: %s [%s]", full_topic.c_str(),
@@ -317,9 +291,6 @@ void ProtoCanbridgeNode::on_descriptor_received(
     RCLCPP_INFO(
       get_logger(), "  Service server: %s [%s]", svc_name.c_str(), svc.ros2_srv_type.c_str());
   }
-
-  // Transition device to OPERATIONAL so TX PDOs start flowing
-  master_.send_nmt_ctrl(device_id, protocan::NmtCommand::START);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -331,6 +302,9 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
   // Group decoded fields by (device_id, local_node_id, topic_index)
   std::unordered_map<uint32_t, std::vector<const protocan::PdoDecodedField *>> groups;
   for (auto & f : decoded.fields) {
+    RCLCPP_INFO(
+      get_logger(), "Decoded PDO field: dev=%u node=%u topic_idx=%u field_idx=%u", f.device_id,
+      f.local_node_id, f.topic_index, f.field_index);
     uint32_t gkey = (static_cast<uint32_t>(f.device_id) << 16) |
                     (static_cast<uint32_t>(f.local_node_id) << 8) | f.topic_index;
     groups[gkey].push_back(&f);
@@ -341,13 +315,15 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
     const uint8_t nid = static_cast<uint8_t>((gkey >> 8) & 0xFF);
     const uint8_t tidx = static_cast<uint8_t>(gkey & 0xFF);
 
-    const uint32_t hkey = (static_cast<uint32_t>(dev) << 8) | nid;
+    const uint32_t hkey = gkey >> 8;  // device_id << 8 | local_node_id
     auto hit = handlers_.find(hkey);
     if (hit == handlers_.end()) continue;
     NodeHandler & handler = hit->second;
 
-    auto tit = handler.topics.find(tidx);
-    if (tit == handler.topics.end() || !tit->second.is_tx) continue;
+    RCLCPP_INFO(get_logger(), "Publishing topic: dev=%u node=%u topic_idx=%u", dev, nid, tidx);
+
+    auto tit = handler.tx_topics.find(tidx);
+    if (tit == handler.tx_topics.end()) continue;
     auto & pub = tit->second.publisher;
     if (!pub) continue;
 
@@ -391,8 +367,8 @@ void ProtoCanbridgeNode::on_rx_topic(
   if (hit == handlers_.end()) return;
   NodeHandler & handler = hit->second;
 
-  auto tit = handler.topics.find(topic_index);
-  if (tit == handler.topics.end() || tit->second.is_tx) return;
+  auto tit = handler.rx_topics.find(topic_index);
+  if (tit == handler.rx_topics.end()) return;
   const uint16_t pdo_id = tit->second.pdo_id;
   if (pdo_id == 0) return;
 

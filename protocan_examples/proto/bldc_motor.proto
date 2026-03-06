@@ -5,13 +5,15 @@ import "google/protobuf/empty.proto";
 import "protocan/options.proto";
 
 message MotorStatus {
+  option (protocan.msg) = { ros2_msg_type: "std_msgs/msg/Float32" };
   float  current_a     = 1;
   float  velocity_rps  = 2;
-  float  temperature_c = 3;
+  float  temperature_c = 3 [(protocan.field).ros2_field = "data"];
   uint32 error_flags   = 4 [(protocan.field).size = 1];
 }
 
 message TwistCommand {
+  option (protocan.msg) = { ros2_msg_type: "geometry_msgs/msg/Twist" };
   float linear_x  = 1 [(protocan.field).ros2_field = "linear.x"];
   float angular_z = 2 [(protocan.field).ros2_field = "angular.z"];
 }

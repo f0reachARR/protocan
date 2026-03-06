@@ -40,8 +40,9 @@ static inline void write_le32(uint8_t * p, uint32_t v)
 // Master
 // ════════════════════════════════════════════════════════════════
 
-Master::Master(ICanInterface & can_if, MasterCallbacks callbacks)
-: can_if_(can_if), callbacks_(std::move(callbacks))
+Master::Master(
+  ICanInterface & can_if, MasterCallbacks callbacks, MasterAutomationOptions automation)
+: can_if_(can_if), callbacks_(std::move(callbacks)), automation_(automation)
 {
 }
 
@@ -212,11 +213,7 @@ void Master::handle_nmt(const ExtendedId & eid, const uint8_t * data, uint8_t le
     callbacks_.on_device_discovered(eid.src_dev, *tracker_.get_device(eid.src_dev));
   }
 
-  // 未知の schema_hash があればディスカバリを開始
-  auto unknowns = tracker_.collect_unknown_schemas();
-  for (const auto & [hash, dev_id, node_id] : unknowns) {
-    send_disc_get_descriptor(dev_id, node_id);
-  }
+  run_automation_for_device(eid.src_dev);
 }
 
 // ── EMCY ──
@@ -348,8 +345,20 @@ void Master::on_bulk_complete(const ExtendedId & eid, const BulkReceiver & recei
       }
       tracker_.cache_descriptor(desc.schema_hash, desc);
 
+      run_automation_for_device(eid.src_dev);
+
       if (callbacks_.on_descriptor_received) {
-        callbacks_.on_descriptor_received(eid.src_dev, eid.src_node, desc);
+        bool notified = false;
+        if (auto info_opt = tracker_.get_device(eid.src_dev)) {
+          for (const auto & node : info_opt->nodes) {
+            if (node.schema_hash != desc.schema_hash) continue;
+            callbacks_.on_descriptor_received(eid.src_dev, node.local_node_id, desc);
+            notified = true;
+          }
+        }
+        if (!notified) {
+          callbacks_.on_descriptor_received(eid.src_dev, eid.src_node, desc);
+        }
       }
     }
   } else if (receiver.payload_type() == BulkPayloadType::SERVICE_RES) {
@@ -561,6 +570,22 @@ Status Master::send_pdo_cfg_delete(uint8_t target_device_id, uint16_t pdo_id)
   return s;
 }
 
+std::optional<uint16_t> Master::find_pdo_id(
+  uint8_t device_id, uint8_t local_node_id, uint8_t topic_index, PdoCfgDirection direction) const
+{
+  for (const auto & [pdo_id, mapping] : pdo_mgr_.mappings()) {
+    if (mapping.direction != direction) continue;
+    for (const auto & entry : mapping.entries) {
+      if (
+        entry.device_id == device_id && entry.local_node_id == local_node_id &&
+        entry.topic_index == topic_index) {
+        return pdo_id;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<uint8_t> Master::send_service_request(
   uint8_t target_device_id, uint8_t target_node_id, uint8_t service_index,
   const uint8_t * request_data, size_t request_len)
@@ -637,5 +662,133 @@ std::optional<uint8_t> Master::send_service_request(
 // ── ヘルパー ──
 
 Status Master::send_frame(const CanFrame & frame) { return can_if_.send(frame); }
+
+bool Master::has_all_descriptors(const DeviceInfo & info) const
+{
+  for (const auto & node : info.nodes) {
+    if (!tracker_.is_schema_known(node.schema_hash)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool Master::node_topology_changed(uint8_t device_id, const DeviceInfo & info) const
+{
+  auto it = auto_device_states_.find(device_id);
+  if (it == auto_device_states_.end()) return true;
+
+  auto normalize = [](const std::vector<NodeInfo> & nodes) {
+    std::vector<NodeInfo> out = nodes;
+    std::sort(out.begin(), out.end(), [](const NodeInfo & a, const NodeInfo & b) {
+      if (a.local_node_id != b.local_node_id) return a.local_node_id < b.local_node_id;
+      return a.schema_hash < b.schema_hash;
+    });
+    return out;
+  };
+
+  std::vector<NodeInfo> old_nodes = normalize(it->second.configured_nodes);
+  std::vector<NodeInfo> new_nodes = normalize(info.nodes);
+  if (old_nodes.size() != new_nodes.size()) return true;
+  for (size_t i = 0; i < old_nodes.size(); ++i) {
+    if (old_nodes[i].local_node_id != new_nodes[i].local_node_id) return true;
+    if (old_nodes[i].schema_hash != new_nodes[i].schema_hash) return true;
+  }
+  return false;
+}
+
+Status Master::reconfigure_device(uint8_t device_id, const DeviceInfo & info)
+{
+  std::vector<NodeConfig> node_configs;
+  node_configs.reserve(info.nodes.size());
+
+  for (const auto & node : info.nodes) {
+    const ParsedDescriptor * desc = tracker_.get_descriptor_ptr(node.schema_hash);
+    if (!desc) return Status::NOT_FOUND;
+    node_configs.push_back(NodeConfig{node.local_node_id, desc});
+  }
+
+  auto & state = auto_device_states_[device_id];
+  for (uint16_t old_pdo_id : state.configured_pdo_ids) {
+    send_pdo_cfg_delete(device_id, old_pdo_id);
+  }
+  state.configured_pdo_ids.clear();
+
+  auto mappings = pdo_mgr_.generate_optimal_mappings(device_id, node_configs);
+  for (const auto & mapping : mappings) {
+    Status s = send_pdo_cfg(device_id, mapping);
+    if (s != Status::OK) return s;
+    state.configured_pdo_ids.push_back(mapping.pdo_id);
+  }
+
+  state.pdo_configured = true;
+  state.configured_nodes = info.nodes;
+  return Status::OK;
+}
+
+void Master::run_automation_for_device(uint8_t device_id)
+{
+  if (
+    !automation_.auto_request_descriptors && !automation_.auto_configure_pdo &&
+    !automation_.auto_manage_state) {
+    return;
+  }
+
+  auto info_opt = tracker_.get_device(device_id);
+  if (!info_opt) return;
+  const DeviceInfo & info = *info_opt;
+
+  auto & state = auto_device_states_[device_id];
+
+  if (info.state == DeviceState::PREOP) {
+    state.preop_requested = false;
+  }
+  if (info.state == DeviceState::OPERATIONAL) {
+    state.start_requested = true;
+  }
+
+  // ノード一覧の取得や再構成のため、必要時は PREOP へ遷移させる
+  if (
+    automation_.auto_manage_state && info.state == DeviceState::OPERATIONAL &&
+    !state.pdo_configured && !state.preop_requested) {
+    if (send_nmt_ctrl(device_id, NmtCommand::ENTER_PREOP) == Status::OK) {
+      state.preop_requested = true;
+    }
+    return;
+  }
+
+  if (info.state != DeviceState::PREOP) {
+    return;
+  }
+
+  if (automation_.auto_request_descriptors) {
+    for (const auto & node : info.nodes) {
+      if (!tracker_.is_schema_known(node.schema_hash)) {
+        send_disc_get_descriptor(device_id, node.local_node_id);
+      }
+    }
+  }
+
+  if (!has_all_descriptors(info)) {
+    return;
+  }
+
+  if (automation_.auto_configure_pdo) {
+    if (!state.pdo_configured || node_topology_changed(device_id, info)) {
+      if (reconfigure_device(device_id, info) != Status::OK) {
+        return;
+      }
+      state.start_requested = false;
+    }
+  }
+
+  if (
+    automation_.auto_manage_state && state.pdo_configured && !state.start_requested &&
+    info.state == DeviceState::PREOP) {
+    if (send_nmt_ctrl(device_id, NmtCommand::START) == Status::OK) {
+      state.start_requested = true;
+    }
+  }
+}
 
 }  // namespace protocan

@@ -298,3 +298,90 @@ TEST_F(MasterTest, ServiceSingleFrameScenario)
   master.poll();
   EXPECT_TRUE(service_res);
 }
+
+TEST_F(MasterTest, AutoConfiguresPdoAndTransitionsToOperational)
+{
+  Master master(can, {});
+
+  // 1) PREOP heartbeat with one unknown node descriptor
+  ExtendedId hb_eid;
+  hb_eid.function_code = FunctionCode::NMT;
+  hb_eid.src_dev = 7;
+  hb_eid.src_node = 0;
+  hb_eid.dst_dev = kBroadcastDeviceId;
+  hb_eid.dst_node = kBroadcastNodeId;
+  hb_eid.context = 0;
+
+  uint8_t hb_payload[14] = {};
+  hb_payload[0] = static_cast<uint8_t>(DeviceState::PREOP);
+  hb_payload[1] = 1;
+  write_le32(hb_payload + 2, 123);
+  write_le32(hb_payload + 6, 0xAABBCCDD);
+  hb_payload[10] = 2;
+
+  can.push_rx(make_extended_frame(hb_eid, hb_payload, 14));
+  master.poll();
+
+  // unknown schema なので DISC が発行される
+  ASSERT_EQ(can.sent_frames.size(), 1u);
+  EXPECT_EQ(decode_extended_id(can.sent_frames[0].id).function_code, FunctionCode::DISC);
+
+  // 2) descriptor を BULK で受信
+  protocan::NodeDescriptor pb_desc;
+  pb_desc.set_schema_hash(0xAABBCCDD);
+  pb_desc.set_node_type_name("AutoNode");
+
+  auto * topic = pb_desc.add_topics();
+  topic->set_index(0);
+  topic->set_name("status");
+  topic->set_is_tx(true);
+  topic->set_periodic(true);
+  topic->set_priority(1);
+  topic->mutable_message()->set_payload_size(4);
+  auto * field = topic->mutable_message()->add_fields();
+  field->set_name("v");
+  field->set_type(protocan::FieldType::FIELD_TYPE_UINT32);
+  field->set_offset(0);
+  field->set_size(4);
+
+  std::string blob;
+  pb_desc.SerializeToString(&blob);
+
+  ExtendedId bulk_eid;
+  bulk_eid.function_code = FunctionCode::BULK;
+  bulk_eid.src_dev = 7;
+  bulk_eid.src_node = 2;
+  bulk_eid.dst_dev = kMasterDeviceId;
+  bulk_eid.dst_node = 0;
+  bulk_eid.context = 0;
+
+  uint8_t ff_payload[64] = {};
+  ff_payload[0] = static_cast<uint8_t>(BulkFrameType::FIRST_FRAME);
+  ff_payload[1] = static_cast<uint8_t>(BulkPayloadType::DESCRIPTOR);
+  write_le32(ff_payload + 2, blob.size());
+  std::memcpy(ff_payload + 6, blob.data(), blob.size());
+
+  can.push_rx(make_extended_frame(bulk_eid, ff_payload, static_cast<uint8_t>(6 + blob.size())));
+  master.poll();
+
+  // DISC の後に PDO_CFG(BEGIN/ENTRY/COMMIT) と START が送られる
+  ASSERT_GE(can.sent_frames.size(), 5u);
+  bool has_pdo_cfg = false;
+  bool has_nmt_start = false;
+  for (size_t i = 1; i < can.sent_frames.size(); ++i) {
+    ExtendedId eid = decode_extended_id(can.sent_frames[i].id);
+    if (eid.function_code == FunctionCode::PDO_CFG) {
+      has_pdo_cfg = true;
+    }
+    if (
+      eid.function_code == FunctionCode::NMT &&
+      eid.context == static_cast<uint8_t>(NmtCommand::START)) {
+      has_nmt_start = true;
+    }
+  }
+  EXPECT_TRUE(has_pdo_cfg);
+  EXPECT_TRUE(has_nmt_start);
+
+  auto map = master.find_pdo_id(7, 2, 0, PdoCfgDirection::TX);
+  EXPECT_TRUE(map.has_value());
+}
