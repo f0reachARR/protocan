@@ -319,7 +319,8 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
 
     auto tit = handler.tx_topics.find(tidx);
     if (tit == handler.tx_topics.end()) continue;
-    auto & pub = tit->second.publisher;
+    auto & th = tit->second;
+    auto & pub = th.publisher;
     if (!pub) continue;
 
     // Find topic descriptor
@@ -332,22 +333,30 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
     }
     if (!ptopic) continue;
 
-    // Build message and fill fields
-    ros_babel_fish::CompoundMessage msg = babel_fish_.create_message(ptopic->message.ros2_msg_type);
+    // Keep last published message so partial PDO payloads can update incrementally.
+    if (!th.tx_last_msg) {
+      th.tx_last_msg = std::make_shared<ros_babel_fish::CompoundMessage>(
+        babel_fish_.create_message(ptopic->message.ros2_msg_type));
+    }
+
+    bool updated = false;
 
     for (auto * f : fields) {
       if (f->field_index >= ptopic->message.fields.size()) continue;
       const auto & fdesc = ptopic->message.fields[f->field_index];
       if (fdesc.ros2_field.empty()) continue;
       try {
-        auto & leaf = navigate_to_field(msg, fdesc.ros2_field);
+        auto & leaf = navigate_to_field(*th.tx_last_msg, fdesc.ros2_field);
         std::visit([&leaf](auto v) { leaf = v; }, f->value);
+        updated = true;
       } catch (const std::exception & e) {
         RCLCPP_WARN_ONCE(get_logger(), "PDO field set error: %s", e.what());
       }
     }
 
-    pub->publish(msg);
+    if (updated) {
+      pub->publish(*th.tx_last_msg);
+    }
   }
 }
 

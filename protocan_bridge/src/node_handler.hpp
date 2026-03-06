@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -16,6 +17,7 @@ struct TopicHandle
   uint16_t pdo_id = 0;  // For RX topics: PDO ID to send; set after PDO mapping generation
   ros_babel_fish::BabelFishPublisher::SharedPtr publisher;       // TX (device→ROS)
   ros_babel_fish::BabelFishSubscription::SharedPtr subscription; // RX (ROS→device)
+  std::shared_ptr<ros_babel_fish::CompoundMessage> tx_last_msg;  // TX cache for partial PDO updates
 };
 
 struct NodeHandler
