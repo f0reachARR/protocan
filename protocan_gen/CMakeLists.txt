@@ -60,3 +60,7 @@ target_link_libraries(protoc-gen-protocan
     protobuf::libprotoc
     protobuf::libprotobuf
 )
+
+install(TARGETS protoc-gen-protocan
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
+)

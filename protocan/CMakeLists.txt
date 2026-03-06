@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include(CMakePackageConfigHelpers)
+
 # ── Protobuf ──
 find_package(Protobuf REQUIRED)
 
@@ -76,6 +78,26 @@ install(DIRECTORY include/protocan
   DESTINATION include
 )
 install(EXPORT protocan-targets
+  FILE protocanTargets.cmake
   NAMESPACE protocan::
+  DESTINATION lib/cmake/protocan
+)
+
+write_basic_package_version_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/protocanConfigVersion.cmake"
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMajorVersion
+)
+
+configure_package_config_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/cmake/protocanConfig.cmake.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/protocanConfig.cmake"
+  INSTALL_DESTINATION lib/cmake/protocan
+)
+
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/protocanConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/protocanConfigVersion.cmake"
   DESTINATION lib/cmake/protocan
 )

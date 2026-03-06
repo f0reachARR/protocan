@@ -7,9 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(ros_babel_fish REQUIRED)
-find_package(Protobuf REQUIRED)
-
-add_subdirectory(../protocan ${CMAKE_CURRENT_BINARY_DIR}/protocan_lib)
+find_package(protocan REQUIRED)
 
 add_executable(protocan_bridge_node
   src/main.cpp
@@ -19,7 +17,6 @@ add_executable(protocan_bridge_node
 
 target_include_directories(protocan_bridge_node PRIVATE
   src
-  ../protocan/include
 )
 
 ament_target_dependencies(protocan_bridge_node
@@ -27,7 +24,7 @@ ament_target_dependencies(protocan_bridge_node
   ros_babel_fish
 )
 
-target_link_libraries(protocan_bridge_node protocan)
+target_link_libraries(protocan_bridge_node protocan::protocan)
 
 install(TARGETS protocan_bridge_node
   DESTINATION lib/${PROJECT_NAME}
