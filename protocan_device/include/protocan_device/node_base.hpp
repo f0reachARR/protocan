@@ -29,6 +29,7 @@ struct PdoTxEntry
   uint8_t  size;
   uint16_t period_ms;
   uint32_t last_tx_ms;
+  bool tx_requested = false;
 };
 
 /// 全Node Type基底クラス。protoc-gen-protocanが生成したNodeクラスが継承。
@@ -97,7 +98,6 @@ protected:
   uint8_t pdo_rx_count_ = 0;
   PdoTxEntry pdo_tx_[kMaxPdoPerNode];
   uint8_t pdo_tx_count_ = 0;
-  bool pdo_tx_requested_[kMaxPdoPerNode] = {};
 };
 
 }  // namespace protocan::device
