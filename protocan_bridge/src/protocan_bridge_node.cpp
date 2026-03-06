@@ -302,9 +302,6 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
   // Group decoded fields by (device_id, local_node_id, topic_index)
   std::unordered_map<uint32_t, std::vector<const protocan::PdoDecodedField *>> groups;
   for (auto & f : decoded.fields) {
-    RCLCPP_INFO(
-      get_logger(), "Decoded PDO field: dev=%u node=%u topic_idx=%u field_idx=%u", f.device_id,
-      f.local_node_id, f.topic_index, f.field_index);
     uint32_t gkey = (static_cast<uint32_t>(f.device_id) << 16) |
                     (static_cast<uint32_t>(f.local_node_id) << 8) | f.topic_index;
     groups[gkey].push_back(&f);
@@ -319,8 +316,6 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
     auto hit = handlers_.find(hkey);
     if (hit == handlers_.end()) continue;
     NodeHandler & handler = hit->second;
-
-    RCLCPP_INFO(get_logger(), "Publishing topic: dev=%u node=%u topic_idx=%u", dev, nid, tidx);
 
     auto tit = handler.tx_topics.find(tidx);
     if (tit == handler.tx_topics.end()) continue;
