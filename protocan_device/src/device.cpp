@@ -110,24 +110,37 @@ void Device::poll()
       uint8_t  sent_count = 0;
       for (uint8_t pi = 0; pi < node->pdo_tx_count(); ++pi) {
         PdoTxEntry & e = node->pdo_tx_at(pi);
-        if (e.period_ms > 0 && (now - e.last_tx_ms) >= e.period_ms) {
+        bool periodic_due = (e.period_ms > 0) && ((now - e.last_tx_ms) >= e.period_ms);
+        bool event_due = node->is_pdo_tx_requested(e.pdo_id);
+        if (periodic_due || event_due) {
           // pdo_id が未送信なら fill して送信
           bool already_sent = false;
           for (uint8_t k = 0; k < sent_count; ++k) {
             if (sent_pdo_ids[k] == e.pdo_id) { already_sent = true; break; }
           }
+          bool event_consumed = false;
           if (!already_sent) {
             uint8_t buf[64] = {};
             uint8_t len = node->fill_pdo_tx(e.pdo_id, buf, 64);
             if (len > 0) {
               CanFrame pdo_frame = make_standard_frame(e.pdo_id, buf, len);
-              send_frame(pdo_frame);
+              Status send_status = send_frame(pdo_frame);
+              if (event_due && send_status == Status::OK) {
+                event_consumed = true;
+              }
             }
             if (sent_count < kMaxPdoPerNode) {
               sent_pdo_ids[sent_count++] = e.pdo_id;
             }
+          } else if (event_due) {
+            event_consumed = true;
           }
-          e.last_tx_ms = now;
+          if (periodic_due) {
+            e.last_tx_ms = now;
+          }
+          if (event_consumed) {
+            node->clear_pdo_tx_request(e.pdo_id);
+          }
         }
       }
     }

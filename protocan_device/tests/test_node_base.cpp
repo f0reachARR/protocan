@@ -151,3 +151,42 @@ TEST(NodeBaseTest, ResetPdos)
   EXPECT_EQ(node.pdo_rx_count(), 0u);
   EXPECT_EQ(node.pdo_tx_count(), 0u);
 }
+
+TEST(NodeBaseTest, RequestPdoTxSetAndClear)
+{
+  TestNode node(1);
+
+  node.add_pdo_tx({0x200, 0, 0, 0, 0, 100, 0});
+  node.add_pdo_tx({0x200, 1, 0, 0, 0, 100, 0});
+
+  EXPECT_FALSE(node.is_pdo_tx_requested(0x200));
+  EXPECT_EQ(node.request_pdo_tx(0x200), Status::OK);
+  EXPECT_TRUE(node.is_pdo_tx_requested(0x200));
+
+  node.clear_pdo_tx_request(0x200);
+  EXPECT_FALSE(node.is_pdo_tx_requested(0x200));
+}
+
+TEST(NodeBaseTest, RequestPdoTxNotFound)
+{
+  TestNode node(1);
+  node.add_pdo_tx({0x201, 0, 0, 0, 0, 100, 0});
+  EXPECT_EQ(node.request_pdo_tx(0x200), Status::NOT_FOUND);
+}
+
+TEST(NodeBaseTest, RequestFlagRemovedByClearAndReset)
+{
+  TestNode node(1);
+
+  node.add_pdo_tx({0x200, 0, 0, 0, 0, 100, 0});
+  node.add_pdo_tx({0x201, 0, 0, 0, 0, 100, 0});
+  EXPECT_EQ(node.request_pdo_tx(0x200), Status::OK);
+  EXPECT_EQ(node.request_pdo_tx(0x201), Status::OK);
+
+  node.clear_pdo(0x200);
+  EXPECT_FALSE(node.is_pdo_tx_requested(0x200));
+  EXPECT_TRUE(node.is_pdo_tx_requested(0x201));
+
+  node.reset_pdos();
+  EXPECT_FALSE(node.is_pdo_tx_requested(0x201));
+}

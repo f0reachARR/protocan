@@ -56,12 +56,15 @@ public:
   Status add_pdo_tx(const PdoTxEntry & e);
   void clear_pdo(uint16_t pdo_id);   // COMMIT action=DELETE 時
   void reset_pdos();                  // RESET_NODE 時
+  Status request_pdo_tx(uint16_t pdo_id);
+  bool is_pdo_tx_requested(uint16_t pdo_id) const;
+  void clear_pdo_tx_request(uint16_t pdo_id);
 
-  // ------- イベント駆動 PDO 送信用コールバック登録 -------
+  // ------- 互換性維持用: 旧イベント駆動 PDO 送信用コールバック登録 -------
 
   using SendPdoFn = protocan::Status (*)(uint16_t pdo_id, const uint8_t * data, uint8_t len, void *);
 
-  /// Device::add_node() が呼び出す。生成コードが override して send_pdo_fn_ を保存する。
+  /// 互換性維持のため残している。新しい生成コードでは未使用。
   virtual void set_send_pdo(SendPdoFn /*fn*/, void * /*ctx*/) {}
 
   // ------- 生成コードがオーバーライドする純仮想メソッド -------
@@ -94,6 +97,7 @@ protected:
   uint8_t pdo_rx_count_ = 0;
   PdoTxEntry pdo_tx_[kMaxPdoPerNode];
   uint8_t pdo_tx_count_ = 0;
+  bool pdo_tx_requested_[kMaxPdoPerNode] = {};
 };
 
 }  // namespace protocan::device

@@ -979,12 +979,6 @@ static std::string gen_hpp(const ServiceInfo & si)
        " uint8_t rsz, uint8_t * res, uint8_t & osz) override;\n";
   o << "\n";
 
-  // SendPdo
-  o << "  using SendPdoFn = protocan::Status(*)(uint16_t pdo_id,"
-       " const uint8_t * data, uint8_t len, void *);\n";
-  o << "  void set_send_pdo(SendPdoFn fn, void * ctx) override;\n";
-  o << "\n";
-
   o << "private:\n";
 
   // TX buffers
@@ -1024,8 +1018,6 @@ static std::string gen_hpp(const ServiceInfo & si)
   }
 
   o << "\n";
-  o << "  SendPdoFn send_pdo_fn_  = nullptr;\n";
-  o << "  void *    send_pdo_ctx_ = nullptr;\n";
   o << "};\n\n";
 
   o << ns_close(si.package_name);
@@ -1105,17 +1097,14 @@ static std::string gen_cpp(const ServiceInfo & si)
 
     // publish_()
     o << "protocan::Status Node::publish_" << rpc.snake_name << "() {\n";
-    o << "  if (!send_pdo_fn_) return protocan::Status::NOT_FOUND;\n";
+    o << "  bool found = false;\n";
     o << "  for (uint8_t i = 0; i < pdo_tx_count(); ++i) {\n";
     o << "    if (pdo_tx_at(i).topic_index == " << rpc.index << ") {\n";
-    o << "      uint16_t pdo_id = pdo_tx_at(i).pdo_id;\n";
-    o << "      uint8_t buf[64] = {};\n";
-    o << "      uint8_t len = fill_pdo_tx(pdo_id, buf, 64);\n";
-    o << "      if (len == 0) return protocan::Status::NOT_FOUND;\n";
-    o << "      return send_pdo_fn_(pdo_id, buf, len, send_pdo_ctx_);\n";
+    o << "      found = true;\n";
+    o << "      request_pdo_tx(pdo_tx_at(i).pdo_id);\n";
     o << "    }\n";
     o << "  }\n";
-    o << "  return protocan::Status::NOT_FOUND;\n";
+    o << "  return found ? protocan::Status::OK : protocan::Status::NOT_FOUND;\n";
     o << "}\n\n";
   }
 
@@ -1342,12 +1331,6 @@ static std::string gen_cpp(const ServiceInfo & si)
     o << "  (void)svc; (void)req; (void)rsz; (void)res; (void)osz;\n";
     o << "  return protocan::Status::NOT_FOUND;\n";
   }
-  o << "}\n\n";
-
-  // set_send_pdo
-  o << "void Node::set_send_pdo(SendPdoFn fn, void * ctx) {\n";
-  o << "  send_pdo_fn_  = fn;\n";
-  o << "  send_pdo_ctx_ = ctx;\n";
   o << "}\n\n";
 
   o << ns_close(si.package_name);

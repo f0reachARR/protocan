@@ -28,7 +28,9 @@ Status NodeBase::add_pdo_tx(const PdoTxEntry & e)
   if (pdo_tx_count_ >= kMaxPdoPerNode) {
     return Status::NO_RESOURCE;
   }
-  pdo_tx_[pdo_tx_count_++] = e;
+  pdo_tx_[pdo_tx_count_] = e;
+  pdo_tx_requested_[pdo_tx_count_] = false;
+  ++pdo_tx_count_;
   return Status::OK;
 }
 
@@ -48,6 +50,7 @@ void NodeBase::clear_pdo(uint16_t pdo_id)
   for (uint8_t i = 0; i < pdo_tx_count_; ++i) {
     if (pdo_tx_[i].pdo_id != pdo_id) {
       pdo_tx_[dst++] = pdo_tx_[i];
+      pdo_tx_requested_[dst - 1] = pdo_tx_requested_[i];
     }
   }
   pdo_tx_count_ = dst;
@@ -57,6 +60,40 @@ void NodeBase::reset_pdos()
 {
   pdo_rx_count_ = 0;
   pdo_tx_count_ = 0;
+  for (uint8_t i = 0; i < kMaxPdoPerNode; ++i) {
+    pdo_tx_requested_[i] = false;
+  }
+}
+
+Status NodeBase::request_pdo_tx(uint16_t pdo_id)
+{
+  bool found = false;
+  for (uint8_t i = 0; i < pdo_tx_count_; ++i) {
+    if (pdo_tx_[i].pdo_id == pdo_id) {
+      pdo_tx_requested_[i] = true;
+      found = true;
+    }
+  }
+  return found ? Status::OK : Status::NOT_FOUND;
+}
+
+bool NodeBase::is_pdo_tx_requested(uint16_t pdo_id) const
+{
+  for (uint8_t i = 0; i < pdo_tx_count_; ++i) {
+    if (pdo_tx_[i].pdo_id == pdo_id && pdo_tx_requested_[i]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void NodeBase::clear_pdo_tx_request(uint16_t pdo_id)
+{
+  for (uint8_t i = 0; i < pdo_tx_count_; ++i) {
+    if (pdo_tx_[i].pdo_id == pdo_id) {
+      pdo_tx_requested_[i] = false;
+    }
+  }
 }
 
 }  // namespace protocan::device

@@ -455,66 +455,21 @@ TEST_F(NodeApiTest, ParamWriteNoCallbackReturnsNotFound)
 
 // ── publish_status ───────────────────────────────────────────
 
-TEST_F(NodeApiTest, PublishStatusWithoutSendFnReturnsNotFound)
-{
-  // send_pdo_fn_ は nullptr (add_node 未呼び出し)
-  EXPECT_EQ(node.publish_status(), Status::NOT_FOUND);
-}
-
 TEST_F(NodeApiTest, PublishStatusWithoutTxEntryReturnsNotFound)
 {
-  // 手動で send_pdo_fn を注入する
-  struct SentPdo {
-    uint16_t       pdo_id;
-    std::vector<uint8_t> data;
-  } sent;
-
-  node.set_send_pdo(
-    [](uint16_t id, const uint8_t * d, uint8_t len, void * ctx) -> Status {
-      auto & s  = *static_cast<SentPdo *>(ctx);
-      s.pdo_id  = id;
-      s.data.assign(d, d + len);
-      return Status::OK;
-    },
-    &sent);
-
-  // TX エントリ未登録 → NOT_FOUND
+  // TX エントリ未登録
   EXPECT_EQ(node.publish_status(), Status::NOT_FOUND);
 }
 
-TEST_F(NodeApiTest, PublishStatusSendsEncodedFrame)
+TEST_F(NodeApiTest, PublishStatusReturnsOkWhenTxEntryExists)
 {
-  struct SentPdo {
-    uint16_t             pdo_id = 0;
-    std::vector<uint8_t> data;
-  } sent;
-
-  node.set_send_pdo(
-    [](uint16_t id, const uint8_t * d, uint8_t len, void * ctx) -> Status {
-      auto & s  = *static_cast<SentPdo *>(ctx);
-      s.pdo_id  = id;
-      s.data.assign(d, d + len);
-      return Status::OK;
-    },
-    &sent);
-
   // TX エントリ登録 (pdo_id=0x100, topic_index=0, 全フィールド)
   node.add_pdo_tx(PdoTxEntry{0x100, 0, 0, 0,  4, 100, 0});
   node.add_pdo_tx(PdoTxEntry{0x100, 0, 1, 4,  4, 100, 0});
   node.add_pdo_tx(PdoTxEntry{0x100, 0, 2, 8,  4, 100, 0});
   node.add_pdo_tx(PdoTxEntry{0x100, 0, 3, 12, 1, 100, 0});
 
-  node.status_buffer() = {2.0f, 3.0f, 25.0f, 0x01u};
-
   EXPECT_EQ(node.publish_status(), Status::OK);
-  EXPECT_EQ(sent.pdo_id, 0x100u);
-  ASSERT_EQ(sent.data.size(), bm::MotorStatus::PACKED_SIZE);
-
-  auto dec = bm::MotorStatus::decode(sent.data.data());
-  EXPECT_FLOAT_EQ(dec.current_a,     2.0f);
-  EXPECT_FLOAT_EQ(dec.velocity_rps,  3.0f);
-  EXPECT_FLOAT_EQ(dec.temperature_c, 25.0f);
-  EXPECT_EQ(dec.error_flags, 0x01u);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -596,18 +551,15 @@ protected:
   }
 };
 
-// ── add_node がトランポリンを注入する ─────────────────────────
+// ── publish_status はフラグ化され poll() で送信される ─────────
 
-TEST_F(DeviceIntegrationTest, AddNodeInjectsSendPdoTrampoline)
+TEST_F(DeviceIntegrationTest, PublishStatusQueuedAndSentOnPoll)
 {
   Device dev = make_device();
-  dev.add_node(node);
-  dev.start();
-  g_time_ms = 101;
-  dev.poll();
+  boot_to_operational(dev);
 
-  // TX エントリを直接登録し publish_status() を呼ぶ
-  // → Device::send_pdo_trampoline 経由で CAN に送信される
+  // TX エントリを直接登録して publish_status() を呼ぶ
+  // → この時点では送信されず、次回 poll() で送信される
   node.add_pdo_tx(PdoTxEntry{0x100, 0, 0, 0,  4, 0, 0});
   node.add_pdo_tx(PdoTxEntry{0x100, 0, 1, 4,  4, 0, 0});
   node.add_pdo_tx(PdoTxEntry{0x100, 0, 2, 8,  4, 0, 0});
@@ -616,6 +568,9 @@ TEST_F(DeviceIntegrationTest, AddNodeInjectsSendPdoTrampoline)
 
   Status s = node.publish_status();
   EXPECT_EQ(s, Status::OK);
+  EXPECT_EQ(can.find_pdo(0x100), nullptr);
+
+  dev.poll();
 
   const CanFrame * pdo = can.find_pdo(0x100);
   ASSERT_NE(pdo, nullptr);
@@ -641,6 +596,9 @@ TEST_F(DeviceIntegrationTest, PublishStatusSendsCorrectPdoViaCan)
   node.status_buffer() = {1.0f, 2.0f, 40.0f, 0x03u};
 
   EXPECT_EQ(node.publish_status(), Status::OK);
+  EXPECT_EQ(can.find_pdo(0x101), nullptr);
+
+  dev.poll();
 
   const CanFrame * pdo = can.find_pdo(0x101);
   ASSERT_NE(pdo, nullptr);
