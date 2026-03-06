@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 #include "protocan/descriptor.pb.h"
 #include "protocan/master.hpp"
@@ -384,4 +386,93 @@ TEST_F(MasterTest, AutoConfiguresPdoAndTransitionsToOperational)
 
   auto map = master.find_pdo_id(7, 2, 0, PdoCfgDirection::TX);
   EXPECT_TRUE(map.has_value());
+}
+
+TEST_F(MasterTest, DeviceTimeoutNotifiedOnceAndRediscoverable)
+{
+  int discovered_count = 0;
+  int timeout_count = 0;
+
+  callbacks.on_device_discovered = [&](uint8_t dev_id, const DeviceInfo & /*info*/) {
+    EXPECT_EQ(dev_id, 4);
+    discovered_count++;
+  };
+  callbacks.on_device_timeout = [&](uint8_t dev_id) {
+    EXPECT_EQ(dev_id, 4);
+    timeout_count++;
+  };
+
+  Master master(can, callbacks);
+  master.set_heartbeat_timeout(std::chrono::milliseconds(1));
+
+  ExtendedId hb_eid;
+  hb_eid.function_code = FunctionCode::NMT;
+  hb_eid.src_dev = 4;
+  hb_eid.src_node = 0;
+  hb_eid.dst_dev = kBroadcastDeviceId;
+  hb_eid.dst_node = kBroadcastNodeId;
+  hb_eid.context = 0;
+
+  uint8_t hb_payload[6] = {};
+  hb_payload[0] = static_cast<uint8_t>(DeviceState::PREOP);
+  hb_payload[1] = 0;
+  write_le32(hb_payload + 2, 1);
+
+  // Discover device
+  can.push_rx(make_extended_frame(hb_eid, hb_payload, 6));
+  master.poll();
+  EXPECT_EQ(discovered_count, 1);
+
+  // Timeout detection should notify once and forget device state
+  std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  master.tick(std::chrono::steady_clock::now());
+  master.tick(std::chrono::steady_clock::now());
+  EXPECT_EQ(timeout_count, 1);
+
+  // Same device heartbeat after timeout should be treated as new discovery again
+  can.push_rx(make_extended_frame(hb_eid, hb_payload, 6));
+  master.poll();
+  EXPECT_EQ(discovered_count, 2);
+}
+
+TEST_F(MasterTest, CachedDescriptorCallbackCanRepeatOnHeartbeat)
+{
+  int descriptor_count = 0;
+  callbacks.on_descriptor_received =
+    [&](uint8_t dev_id, uint8_t node_id, const ParsedDescriptor & desc) {
+      EXPECT_EQ(dev_id, 6);
+      EXPECT_EQ(node_id, 2);
+      EXPECT_EQ(desc.schema_hash, 0xCAFEBABE);
+      descriptor_count++;
+    };
+
+  Master master(can, callbacks);
+
+  ParsedDescriptor cached_desc;
+  cached_desc.schema_hash = 0xCAFEBABE;
+  cached_desc.node_type_name = "CachedNode";
+  master.device_tracker().cache_descriptor(cached_desc.schema_hash, cached_desc);
+
+  ExtendedId hb_eid;
+  hb_eid.function_code = FunctionCode::NMT;
+  hb_eid.src_dev = 6;
+  hb_eid.src_node = 0;
+  hb_eid.dst_dev = kBroadcastDeviceId;
+  hb_eid.dst_node = kBroadcastNodeId;
+  hb_eid.context = 0;
+
+  uint8_t hb_payload[14] = {};
+  hb_payload[0] = static_cast<uint8_t>(DeviceState::PREOP);
+  hb_payload[1] = 1;
+  write_le32(hb_payload + 2, 10);
+  write_le32(hb_payload + 6, 0xCAFEBABE);
+  hb_payload[10] = 2;
+
+  can.push_rx(make_extended_frame(hb_eid, hb_payload, 14));
+  can.push_rx(make_extended_frame(hb_eid, hb_payload, 14));
+  master.poll();
+  master.poll();
+
+  // PREOP heartbeat のたびに、既知 schema の descriptor callback が再通知される。
+  EXPECT_EQ(descriptor_count, 2);
 }

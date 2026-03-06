@@ -59,6 +59,7 @@ struct MasterCallbacks
   std::function<void(uint8_t device_id)> on_device_timeout;
 
   /// ディスクリプタが取得・パースされた
+  /// 既知 schema の再同期時にも呼ばれることがあり、同一ノードで複数回発火しうる。
   std::function<void(uint8_t device_id, uint8_t local_node_id, const ParsedDescriptor & desc)>
     on_descriptor_received;
 
@@ -178,6 +179,9 @@ public:
 
   PdoManager & pdo_manager() { return pdo_mgr_; }
   const PdoManager & pdo_manager() const { return pdo_mgr_; }
+
+  /// Heartbeat タイムアウト閾値を設定する
+  void set_heartbeat_timeout(std::chrono::milliseconds timeout) { heartbeat_timeout_ = timeout; }
 
   /// 指定トピックに対応する PDO ID を検索する
   std::optional<uint16_t> find_pdo_id(

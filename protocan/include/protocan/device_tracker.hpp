@@ -79,6 +79,10 @@ public:
   /// @return タイムアウトとして検出された device_id のリスト
   std::vector<uint8_t> detect_timeouts(std::chrono::milliseconds timeout) const;
 
+  /// 指定デバイスを追跡対象から削除する
+  /// @return 削除した場合 true
+  bool remove_device(uint8_t device_id);
+
   /// 全デバイスから未知の schema_hash を収集する
   /// @return 未知の (未キャッシュの) schema_hash と対応する (device_id, local_node_id) のペア
   std::vector<std::tuple<uint32_t, uint8_t, uint8_t>> collect_unknown_schemas() const;

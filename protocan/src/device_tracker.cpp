@@ -109,6 +109,21 @@ std::vector<uint8_t> DeviceTracker::detect_timeouts(std::chrono::milliseconds ti
   return timed_out;
 }
 
+bool DeviceTracker::remove_device(uint8_t device_id)
+{
+  auto it = devices_.find(device_id);
+  if (it == devices_.end()) {
+    return false;
+  }
+
+  for (const auto & node : it->second.nodes) {
+    node_to_schema_.erase({device_id, node.local_node_id});
+  }
+
+  devices_.erase(it);
+  return true;
+}
+
 std::vector<std::tuple<uint32_t, uint8_t, uint8_t>> DeviceTracker::collect_unknown_schemas() const
 {
   std::vector<std::tuple<uint32_t, uint8_t, uint8_t>> unknowns;

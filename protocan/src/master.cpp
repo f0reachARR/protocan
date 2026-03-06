@@ -65,6 +65,8 @@ void Master::tick(std::chrono::steady_clock::time_point now)
     if (callbacks_.on_device_timeout) {
       callbacks_.on_device_timeout(dev_id);
     }
+    tracker_.remove_device(dev_id);
+    auto_device_states_.erase(dev_id);
   }
 
   // Service タイムアウト検出
@@ -759,6 +761,14 @@ void Master::run_automation_for_device(uint8_t device_id)
 
   if (info.state != DeviceState::PREOP) {
     return;
+  }
+
+  if (callbacks_.on_descriptor_received) {
+    for (const auto & node : info.nodes) {
+      const ParsedDescriptor * desc = tracker_.get_descriptor_ptr(node.schema_hash);
+      if (!desc) continue;
+      callbacks_.on_descriptor_received(device_id, node.local_node_id, *desc);
+    }
   }
 
   if (automation_.auto_request_descriptors) {
