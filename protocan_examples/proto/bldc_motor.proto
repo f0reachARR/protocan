@@ -1,0 +1,51 @@
+syntax = "proto3";
+package bldc_motor;
+
+import "google/protobuf/empty.proto";
+import "protocan/options.proto";
+
+message MotorStatus {
+  float  current_a     = 1;
+  float  velocity_rps  = 2;
+  float  temperature_c = 3;
+  uint32 error_flags   = 4 [(protocan.field).size = 1];
+}
+
+message TwistCommand {
+  float linear_x  = 1 [(protocan.field).ros2_field = "linear.x"];
+  float angular_z = 2 [(protocan.field).ros2_field = "angular.z"];
+}
+
+message SetEnableRequest {
+  bool enable = 1;
+}
+
+message SetEnableResponse {
+  bool success = 1;
+}
+
+message PidGains {
+  float kp = 1;
+  float ki = 2;
+  float kd = 3;
+}
+
+service BLDCMotor {
+  option (protocan.node).ros2_namespace = "/bldc_motor";
+
+  rpc Status(google.protobuf.Empty) returns (stream MotorStatus) {
+    option (protocan.method).periodic  = true;
+    option (protocan.method).priority  = 1;
+  }
+
+  rpc Command(stream TwistCommand) returns (google.protobuf.Empty) {
+    option (protocan.method).ros2_name = "cmd_vel";
+  }
+
+  rpc SetEnable(SetEnableRequest) returns (SetEnableResponse) {}
+
+  rpc PidGainsCfg(PidGains) returns (PidGains) {
+    option (protocan.method).is_parameter = true;
+    option (protocan.method).ros2_name    = "pid_gains";
+  }
+}

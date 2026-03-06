@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>protocan_examples</name>
+  <version>0.1.0</version>
+  <description>Experimental SocketCAN nodes built from protocan_gen outputs</description>
+  <maintainer email="todo@todo.com">TODO</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <build_depend>protobuf</build_depend>
+  <build_depend>protocan</build_depend>
+  <build_depend>protocan_device</build_depend>
+  <build_depend>protocan_gen</build_depend>
+
+  <exec_depend>protobuf</exec_depend>
+  <exec_depend>protocan</exec_depend>
+  <exec_depend>protocan_device</exec_depend>
+  <exec_depend>protocan_gen</exec_depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>

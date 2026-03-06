@@ -230,6 +230,7 @@ void ProtoCanbridgeNode::on_descriptor_received(
   // ── Create TX publishers (device → ROS) ──
   for (auto & topic : desc.topics) {
     if (!topic.is_tx) continue;
+    if (topic.message.ros2_msg_type.empty()) continue;
     const std::string full_topic = ros_ns + topic.name;
     auto pub =
       babel_fish_.create_publisher(*this, full_topic, topic.message.ros2_msg_type, rclcpp::QoS(10));
@@ -264,6 +265,7 @@ void ProtoCanbridgeNode::on_descriptor_received(
   // ── Create RX subscriptions (ROS → device) ──
   for (auto & topic : desc.topics) {
     if (topic.is_tx) continue;
+    if (topic.message.ros2_msg_type.empty()) continue;
     const std::string full_topic = ros_ns + topic.name;
     const uint32_t tidx = topic.index;
 
@@ -284,6 +286,7 @@ void ProtoCanbridgeNode::on_descriptor_received(
 
   // ── Create service servers (ROS → device) ──
   for (auto & svc : desc.services) {
+    if (svc.ros2_srv_type.empty()) continue;
     const std::string svc_name = ros_ns + svc.name;
     const uint8_t svc_idx = static_cast<uint8_t>(svc.index);
 
