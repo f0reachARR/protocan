@@ -1,15 +1,15 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <optional>
-#include <unordered_map>
-
 #include <rclcpp/rclcpp.hpp>
 #include <ros_babel_fish/babel_fish.hpp>
 #include <ros_babel_fish/messages/compound_message.hpp>
+#include <unordered_map>
 
-#include "protocan/master.hpp"
 #include "node_handler.hpp"
+#include "protocan/master.hpp"
 #include "socketcan_interface.hpp"
 
 class ProtoCanbridgeNode : public rclcpp::Node
@@ -46,7 +46,7 @@ private:
   std::unordered_map<uint32_t, NodeHandler> handlers_;
 
   // pdo_id → 64-byte PDO payload buffer for outgoing RX frames (ROS→device)
-  std::unordered_map<uint16_t, std::array<uint8_t, 64>> pdo_rx_buffers_;
+  std::map<uint16_t, std::array<uint8_t, 64>> pdo_rx_buffers_;
 
   rclcpp::TimerBase::SharedPtr poll_timer_;
   rclcpp::TimerBase::SharedPtr tick_timer_;

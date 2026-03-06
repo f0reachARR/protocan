@@ -2,3 +2,5 @@
 build_*
 build/
 gen/
+install/
+log/

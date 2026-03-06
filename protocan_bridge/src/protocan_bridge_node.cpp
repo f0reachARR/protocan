@@ -19,8 +19,8 @@ static std::string camel_to_snake(const std::string & input)
     char c = input[i];
     if (std::isupper(static_cast<unsigned char>(c))) {
       bool prev_lower = (i > 0 && std::islower(static_cast<unsigned char>(input[i - 1])));
-      bool next_lower = (i + 1 < input.size() &&
-                         std::islower(static_cast<unsigned char>(input[i + 1])));
+      bool next_lower =
+        (i + 1 < input.size() && std::islower(static_cast<unsigned char>(input[i + 1])));
       bool prev_upper = (i > 0 && std::isupper(static_cast<unsigned char>(input[i - 1])));
       if (i > 0 && (prev_lower || (next_lower && prev_upper))) {
         result += '_';
@@ -42,8 +42,7 @@ static ros_babel_fish::Message & navigate_to_field(
     return msg[path];
   }
   return navigate_to_field(
-    msg[path.substr(0, dot)].as<ros_babel_fish::CompoundMessage>(),
-    path.substr(dot + 1));
+    msg[path.substr(0, dot)].as<ros_babel_fish::CompoundMessage>(), path.substr(dot + 1));
 }
 
 // Navigate a dot-separated field path in a CompoundMessage (const)
@@ -55,8 +54,7 @@ static const ros_babel_fish::Message & navigate_to_field(
     return msg[path];
   }
   return navigate_to_field(
-    msg[path.substr(0, dot)].as<ros_babel_fish::CompoundMessage>(),
-    path.substr(dot + 1));
+    msg[path.substr(0, dot)].as<ros_babel_fish::CompoundMessage>(), path.substr(dot + 1));
 }
 
 // Read a FieldValue from a Message leaf based on ProtoCAN field_type enum
@@ -64,18 +62,30 @@ static protocan::FieldValue field_value_from_message(
   const ros_babel_fish::Message & msg, uint8_t field_type)
 {
   switch (field_type) {
-    case 0: return msg.value<bool>();
-    case 1: return msg.value<uint8_t>();
-    case 2: return msg.value<int8_t>();
-    case 3: return msg.value<uint16_t>();
-    case 4: return msg.value<int16_t>();
-    case 5: return msg.value<uint32_t>();
-    case 6: return msg.value<int32_t>();
-    case 7: return msg.value<float>();
-    case 8: return msg.value<double>();
-    case 9: return msg.value<uint64_t>();
-    case 10: return msg.value<int64_t>();
-    default: return uint32_t{0};
+    case 0:
+      return msg.value<bool>();
+    case 1:
+      return msg.value<uint8_t>();
+    case 2:
+      return msg.value<int8_t>();
+    case 3:
+      return msg.value<uint16_t>();
+    case 4:
+      return msg.value<int16_t>();
+    case 5:
+      return msg.value<uint32_t>();
+    case 6:
+      return msg.value<int32_t>();
+    case 7:
+      return msg.value<float>();
+    case 8:
+      return msg.value<double>();
+    case 9:
+      return msg.value<uint64_t>();
+    case 10:
+      return msg.value<int64_t>();
+    default:
+      return uint32_t{0};
   }
 }
 
@@ -91,14 +101,12 @@ protocan::MasterCallbacks ProtoCanbridgeNode::make_callbacks(ProtoCanbridgeNode 
     node->on_device_discovered(dev, info);
   };
 
-  cbs.on_device_timeout = [node](uint8_t dev) {
-    node->on_device_timeout(dev);
-  };
+  cbs.on_device_timeout = [node](uint8_t dev) { node->on_device_timeout(dev); };
 
-  cbs.on_descriptor_received = [node](
-    uint8_t dev, uint8_t node_id, const protocan::ParsedDescriptor & desc) {
-    node->on_descriptor_received(dev, node_id, desc);
-  };
+  cbs.on_descriptor_received =
+    [node](uint8_t dev, uint8_t node_id, const protocan::ParsedDescriptor & desc) {
+      node->on_descriptor_received(dev, node_id, desc);
+    };
 
   cbs.on_pdo_data = [node](const protocan::PdoDecodedData & decoded) {
     node->on_pdo_data(decoded);
@@ -118,24 +126,21 @@ ProtoCanbridgeNode::ProtoCanbridgeNode(const rclcpp::NodeOptions & options)
   master_(can_if_, make_callbacks(this))
 {
   if (can_if_.open() != protocan::Status::OK) {
-    RCLCPP_ERROR(get_logger(), "Failed to open CAN interface '%s'",
-                 get_parameter("can_interface").as_string().c_str());
+    RCLCPP_ERROR(
+      get_logger(), "Failed to open CAN interface '%s'",
+      get_parameter("can_interface").as_string().c_str());
   } else {
-    RCLCPP_INFO(get_logger(), "CAN interface '%s' opened",
-                get_parameter("can_interface").as_string().c_str());
+    RCLCPP_INFO(
+      get_logger(), "CAN interface '%s' opened",
+      get_parameter("can_interface").as_string().c_str());
   }
 
-  poll_timer_ = create_wall_timer(
-    std::chrono::milliseconds(1), [this]() { on_poll(); });
+  poll_timer_ = create_wall_timer(std::chrono::milliseconds(1), [this]() { on_poll(); });
 
-  tick_timer_ = create_wall_timer(
-    std::chrono::milliseconds(100), [this]() { on_tick(); });
+  tick_timer_ = create_wall_timer(std::chrono::milliseconds(100), [this]() { on_tick(); });
 }
 
-ProtoCanbridgeNode::~ProtoCanbridgeNode()
-{
-  can_if_.close();
-}
+ProtoCanbridgeNode::~ProtoCanbridgeNode() { can_if_.close(); }
 
 // ════════════════════════════════════════════════════════════════
 // Timer callbacks
@@ -152,10 +157,7 @@ void ProtoCanbridgeNode::on_poll()
   }
 }
 
-void ProtoCanbridgeNode::on_tick()
-{
-  master_.tick(std::chrono::steady_clock::now());
-}
+void ProtoCanbridgeNode::on_tick() { master_.tick(std::chrono::steady_clock::now()); }
 
 // ════════════════════════════════════════════════════════════════
 // Device lifecycle callbacks
@@ -198,8 +200,9 @@ void ProtoCanbridgeNode::on_descriptor_received(
   uint8_t device_id, uint8_t local_node_id, const protocan::ParsedDescriptor & desc)
 {
   const uint32_t hkey = (static_cast<uint32_t>(device_id) << 8) | local_node_id;
-  RCLCPP_INFO(get_logger(), "Descriptor received for device %u node %u (%s)",
-              device_id, local_node_id, desc.node_type_name.c_str());
+  RCLCPP_INFO(
+    get_logger(), "Descriptor received for device %u node %u (%s)", device_id, local_node_id,
+    desc.node_type_name.c_str());
 
   // Remove old handler if re-registered
   handlers_.erase(hkey);
@@ -209,8 +212,8 @@ void ProtoCanbridgeNode::on_descriptor_received(
   if (!desc.ros2_namespace.empty()) {
     ros_ns = desc.ros2_namespace;
   } else {
-    ros_ns = "/protocan/device_" + std::to_string(device_id) + "/" +
-             camel_to_snake(desc.node_type_name);
+    ros_ns =
+      "/protocan/device_" + std::to_string(device_id) + "/" + camel_to_snake(desc.node_type_name);
   }
   // Ensure trailing slash
   if (!ros_ns.empty() && ros_ns.back() != '/') {
@@ -228,14 +231,15 @@ void ProtoCanbridgeNode::on_descriptor_received(
   for (auto & topic : desc.topics) {
     if (!topic.is_tx) continue;
     const std::string full_topic = ros_ns + topic.name;
-    auto pub = babel_fish_.create_publisher(
-      *this, full_topic, topic.message.ros2_msg_type, rclcpp::QoS(10));
+    auto pub =
+      babel_fish_.create_publisher(*this, full_topic, topic.message.ros2_msg_type, rclcpp::QoS(10));
     TopicHandle th;
     th.is_tx = true;
     th.publisher = pub;
     handler.topics[topic.index] = std::move(th);
-    RCLCPP_INFO(get_logger(), "  TX publisher: %s [%s]",
-                full_topic.c_str(), topic.message.ros2_msg_type.c_str());
+    RCLCPP_INFO(
+      get_logger(), "  TX publisher: %s [%s]", full_topic.c_str(),
+      topic.message.ros2_msg_type.c_str());
   }
 
   // ── Generate and send PDO mappings ──
@@ -273,8 +277,9 @@ void ProtoCanbridgeNode::on_descriptor_received(
     auto & th = handler.topics[tidx];
     th.is_tx = false;
     th.subscription = sub;
-    RCLCPP_INFO(get_logger(), "  RX subscription: %s [%s]",
-                full_topic.c_str(), topic.message.ros2_msg_type.c_str());
+    RCLCPP_INFO(
+      get_logger(), "  RX subscription: %s [%s]", full_topic.c_str(),
+      topic.message.ros2_msg_type.c_str());
   }
 
   // ── Create service servers (ROS → device) ──
@@ -286,16 +291,15 @@ void ProtoCanbridgeNode::on_descriptor_received(
       *this, svc_name, svc.ros2_srv_type,
       [this, device_id, local_node_id, svc_idx, &svc](
         std::shared_ptr<ros_babel_fish::CompoundMessage> req,
-        std::shared_ptr<ros_babel_fish::CompoundMessage> /*res*/)
-      {
+        std::shared_ptr<ros_babel_fish::CompoundMessage> /*res*/) {
         // Encode request fields into a byte buffer
         std::array<uint8_t, protocan::kCanFdMaxPayload> buf{};
         for (size_t fi = 0; fi < svc.request.fields.size(); ++fi) {
           auto & fdesc = svc.request.fields[fi];
           if (fdesc.ros2_field.empty()) continue;
           try {
-            const auto & leaf = navigate_to_field(
-              req->as<ros_babel_fish::CompoundMessage>(), fdesc.ros2_field);
+            const auto & leaf =
+              navigate_to_field(req->as<ros_babel_fish::CompoundMessage>(), fdesc.ros2_field);
             auto fv = field_value_from_message(leaf, fdesc.type);
             protocan::encode_field(buf.data(), fdesc.offset, fdesc.type, fv, fdesc.size);
           } catch (const std::exception & e) {
@@ -307,8 +311,8 @@ void ProtoCanbridgeNode::on_descriptor_received(
       });
 
     handler.service_servers.push_back(server);
-    RCLCPP_INFO(get_logger(), "  Service server: %s [%s]",
-                svc_name.c_str(), svc.ros2_srv_type.c_str());
+    RCLCPP_INFO(
+      get_logger(), "  Service server: %s [%s]", svc_name.c_str(), svc.ros2_srv_type.c_str());
   }
 
   // Transition device to OPERATIONAL so TX PDOs start flowing
@@ -325,8 +329,7 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
   std::unordered_map<uint32_t, std::vector<const protocan::PdoDecodedField *>> groups;
   for (auto & f : decoded.fields) {
     uint32_t gkey = (static_cast<uint32_t>(f.device_id) << 16) |
-                    (static_cast<uint32_t>(f.local_node_id) << 8) |
-                    f.topic_index;
+                    (static_cast<uint32_t>(f.local_node_id) << 8) | f.topic_index;
     groups[gkey].push_back(&f);
   }
 
@@ -348,13 +351,15 @@ void ProtoCanbridgeNode::on_pdo_data(const protocan::PdoDecodedData & decoded)
     // Find topic descriptor
     const protocan::ParsedTopic * ptopic = nullptr;
     for (auto & t : handler.desc.topics) {
-      if (t.index == tidx) { ptopic = &t; break; }
+      if (t.index == tidx) {
+        ptopic = &t;
+        break;
+      }
     }
     if (!ptopic) continue;
 
     // Build message and fill fields
-    ros_babel_fish::CompoundMessage msg =
-      babel_fish_.create_message(ptopic->message.ros2_msg_type);
+    ros_babel_fish::CompoundMessage msg = babel_fish_.create_message(ptopic->message.ros2_msg_type);
 
     for (auto * f : fields) {
       if (f->field_index >= ptopic->message.fields.size()) continue;
@@ -391,7 +396,10 @@ void ProtoCanbridgeNode::on_rx_topic(
   // Find topic descriptor
   const protocan::ParsedTopic * ptopic = nullptr;
   for (auto & t : handler.desc.topics) {
-    if (t.index == topic_index) { ptopic = &t; break; }
+    if (t.index == topic_index) {
+      ptopic = &t;
+      break;
+    }
   }
   if (!ptopic) return;
 
@@ -402,7 +410,6 @@ void ProtoCanbridgeNode::on_rx_topic(
 
   // Get or create the PDO buffer
   auto & buf = pdo_rx_buffers_[pdo_id];
-  buf.fill(0);  // zero out before filling (keeps other-topic fields at zero)
 
   // Encode fields from the ROS message into the PDO buffer
   for (auto & entry : mapping.entries) {
